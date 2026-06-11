@@ -22,6 +22,18 @@ export default defineConfig(({ mode }) => {
 			allowedHosts: true,
 			hmr: { overlay: false, },
 			cors: false
-		}
+		},
+		build: {
+			chunkSizeWarningLimit: 1000,
+			rollupOptions: {
+				output: {
+					manualChunks: {
+						react: ["react", "react-dom"],
+						supabase: ["@supabase/supabase-js"],
+						ui: ["@radix-ui/react-dialog", "@radix-ui/react-tabs", "@radix-ui/react-select", "lucide-react"],
+					},
+				},
+			},
+		},
 	};
 });
