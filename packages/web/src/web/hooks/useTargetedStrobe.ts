@@ -15,6 +15,7 @@ import {
   goertzel,
   centsFromPhaseDelta,
   targetPartial,
+  selectBestPartial,
 } from "@/lib/tuner/pitchEngine";
 
 export interface TargetedStrobeState {
@@ -291,7 +292,22 @@ export function useTargetedStrobe(
         return;
       }
 
-      const fc = coarseFreq(buf, sr, fTarget);
+      // ── 동적 배음 선택 ──────────────────────────────────────────
+      // 안정 구간 진입 후 실제 신호에서 가장 강한 배음 자동 선택.
+      // partial이 바뀌면 targetFreq도 갱신하고 캡처 리셋.
+      if (keyIndex <= 26) {
+        const baseFreq = PIANO_KEYS[keyIndex].freq;
+        const bestP = selectBestPartial(buf, sr, keyIndex, baseFreq);
+        if (bestP !== partialRef.current) {
+          partialRef.current = bestP;
+          targetFreqRef.current = baseFreq * bestP;
+          resetCapture();
+          rafRef.current = requestAnimationFrame(detect);
+          return;
+        }
+      }
+
+      const fc = coarseFreq(buf, sr, targetFreqRef.current);
 
       coarseBufRef.current.push(fc);
 
@@ -301,10 +317,14 @@ export function useTargetedStrobe(
 
       const fcMed = medianOf(coarseBufRef.current);
 
+      // 동적 선택 후 최신 partial/targetFreq ref 사용
+      const currentPartial = partialRef.current;
+      const currentTargetFreq = targetFreqRef.current;
+
       const liveC = partialHzToBaseAbsoluteCents(
         fcMed,
         keyIndex,
-        partial
+        currentPartial
       );
 
       if (Number.isFinite(liveC) && Math.abs(liveC) < 300) {
@@ -312,7 +332,7 @@ export function useTargetedStrobe(
       }
 
       const residual = wrapPi(
-        gTarget.phase - 2 * Math.PI * fTarget * tAudio
+        gTarget.phase - 2 * Math.PI * currentTargetFreq * tAudio
       );
 
       if (captureStartRef.current === null) {
@@ -328,7 +348,7 @@ export function useTargetedStrobe(
         const dt = tAudio - lastAudioTimeRef.current;
 
         const predicted =
-          2 * Math.PI * (fcMed - fTarget) * dt;
+          2 * Math.PI * (fcMed - currentTargetFreq) * dt;
 
         const raw = residual - prev;
         const k = Math.round(
@@ -356,20 +376,20 @@ export function useTargetedStrobe(
             0,
             cumPhaseRef.current,
             totalDt,
-            fTarget
+            currentTargetFreq
           );
 
           let finalC = liveC;
 
           if (Number.isFinite(centsFromTarget)) {
             const measuredPartialHz =
-              fTarget * Math.pow(2, centsFromTarget / 1200);
+              currentTargetFreq * Math.pow(2, centsFromTarget / 1200);
 
             const absoluteCents =
               partialHzToBaseAbsoluteCents(
                 measuredPartialHz,
                 keyIndex,
-                partial
+                currentPartial
               );
 
             finalC =

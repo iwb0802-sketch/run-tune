@@ -148,8 +148,9 @@ export function correctOctaveByHPS(
   return bestC;
 }
 
-/* ---------- PT-100식 타겟 배음 매핑 ----------
+/* ---------- PT-100식 타겟 배음 매핑 (고정 fallback) ----------
  * keyIndex 0 = A0
+ * 실시간 신호가 없을 때 초기값으로 사용.
  */
 export function targetPartial(keyIndex: number): number {
   if (keyIndex < 0) return 1;
@@ -157,6 +158,49 @@ export function targetPartial(keyIndex: number): number {
   if (keyIndex < 24) return 4;   // A1–G#2
   if (keyIndex < 36) return 2;   // A2–G#3
   return 1;                       // A3 이상
+}
+
+/* ---------- 동적 배음 선택 ----------
+ * 실제 버퍼에서 후보 배음(2, 4, 6)의 Goertzel magnitude를 비교해
+ * 가장 강한 배음을 선택한다.
+ *
+ * 규칙:
+ * - 후보: 해당 건반 기본음 × [2, 4, 6] 중 sr/2 이하인 것만
+ * - magnitude가 fallback partial보다 MIN_GAIN_RATIO 이상 강해야 교체
+ * - 결과가 sr/2 초과하면 fallback 사용
+ *
+ * @returns 선택된 partial 숫자 (1, 2, 4, 6 중 하나)
+ */
+const MIN_GAIN_RATIO = 1.3; // 후보가 기존보다 30% 이상 강해야 교체
+
+export function selectBestPartial(
+  buf: Float32Array,
+  sr: number,
+  keyIndex: number,
+  baseFreq: number   // 해당 건반의 평균율 기본음 주파수
+): number {
+  const fallback = targetPartial(keyIndex);
+
+  // 저음 구간(keyIndex 0~26)만 동적 선택 적용
+  if (keyIndex > 26) return fallback;
+
+  const candidates = [2, 4, 6].filter(p => baseFreq * p < sr / 2 && baseFreq * p > 40);
+
+  if (candidates.length === 0) return fallback;
+
+  let bestPartial = fallback;
+  let bestMag = goertzel(buf, sr, baseFreq * fallback).magnitude;
+
+  for (const p of candidates) {
+    if (p === fallback) continue;
+    const mag = goertzel(buf, sr, baseFreq * p).magnitude;
+    if (mag > bestMag * MIN_GAIN_RATIO) {
+      bestMag = mag;
+      bestPartial = p;
+    }
+  }
+
+  return bestPartial;
 }
 
 /* ---------- Goertzel: 단일 주파수 복소 응답 ----------
