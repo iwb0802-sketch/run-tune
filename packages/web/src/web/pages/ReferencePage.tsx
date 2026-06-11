@@ -81,9 +81,11 @@ export default function ReferencePage() {
     if (cents === null || cents === undefined) return;
     const sid = await ensureSession();
     if (!sid) return;
-    recordMeasurement(seq.targetKeyIndex, cents, result?.frequency ?? PIANO_KEYS[seq.targetKeyIndex].freq);
+    const targetKey = PIANO_KEYS[seq.targetKeyIndex];
+    if (!targetKey) return;
+    recordMeasurement(seq.targetKeyIndex, cents, result?.frequency ?? targetKey.freq);
     sonnerToast.success(
-      `건반 ${seq.targetKeyIndex + 1} (${PIANO_KEYS[seq.targetKeyIndex].noteName}${PIANO_KEYS[seq.targetKeyIndex].octave}) ` +
+      `건반 ${seq.targetKeyIndex + 1} (${targetKey.noteName}${targetKey.octave}) ` +
       `${cents > 0 ? "+" : ""}${cents.toFixed(1)}¢ 저장됨`
     );
     if (autoAdvanceRef.current && seq.canNext) {
