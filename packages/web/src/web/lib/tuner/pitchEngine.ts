@@ -86,19 +86,25 @@ export function detectPitchYIN(
   return sr / bt;
 }
 
-/* ---------- HPS 옵타브 보정 ----------
+/* ---------- HPS 옥타브 보정 ----------
  * AnalyserNode.getFloatFrequencyData(spectrumDb) 결과를 받음.
  * fYin 주변에서 f/2, f/3, f/4 등 서브하모닉 후보를 평가.
  * 각 후보 c에 대해 점수 = Σ_{k=1..6} magLinear[round(k·c·N/sr)]
  * 가장 점수 높고 27Hz 이상인 후보 채택.
+ *
+ * keyIndex >= 60 (E5 이상) 은 배음이 희박해서 HPS 오탐 위험 →
+ * keyIndex를 넘기면 보정 없이 fYin 그대로 반환.
  */
 export function correctOctaveByHPS(
   fYin: number,
-  spectrumDb: Float32Array,   // dB scale from getFloatFrequencyData (length = fftSize/2)
+  spectrumDb: Float32Array,
   sr: number,
   fftSize: number,
-  numHarmonics = 5
+  numHarmonics = 5,
+  keyIndex = 0        // 건반 인덱스 (0=A0, 87=C8)
 ): number {
+  // 고음(E5 이상, keyIndex 60+)은 HPS 보정 비활성화
+  if (keyIndex >= 60) return fYin;
   if (fYin <= 0) return fYin;
   const binHz = sr / fftSize;
   const N = spectrumDb.length;

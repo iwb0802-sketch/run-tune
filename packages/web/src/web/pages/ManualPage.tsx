@@ -237,6 +237,12 @@ export default function ManualPage() {
           <span className="px-3 py-1 text-xs font-bold rounded-md bg-card text-primary shadow-sm">
             수동
           </span>
+          <Link
+            to="/composite"
+            className="px-3 py-1 text-xs font-medium rounded-md text-muted-foreground hover:text-foreground transition-colors"
+          >
+            복합
+          </Link>
         </nav>
       </header>
 

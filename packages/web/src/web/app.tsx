@@ -7,6 +7,7 @@ import { useAuth } from "./hooks/useAuth";
 
 const Home = lazy(() => import("./pages/Home"));
 const ManualPage = lazy(() => import("./pages/ManualPage"));
+const CompositePage = lazy(() => import("./pages/CompositePage"));
 const AuthPage = lazy(() => import("./pages/AuthPage"));
 
 function AppRoutes() {
@@ -28,6 +29,7 @@ function AppRoutes() {
     <Switch>
       <Route path="/" component={Home} />
       <Route path="/manual" component={ManualPage} />
+      <Route path="/composite" component={CompositePage} />
       <Route>
         <div className="min-h-screen flex items-center justify-center">
           <p className="text-muted-foreground">페이지를 찾을 수 없습니다.</p>

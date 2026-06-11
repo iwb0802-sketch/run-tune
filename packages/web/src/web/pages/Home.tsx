@@ -251,7 +251,7 @@ export default function Home() {
           </div>
         </div>
           <div className="flex w-full items-center gap-2 overflow-x-auto pb-0.5 sm:w-auto sm:overflow-visible sm:pb-0">
-          {/* 모드 전환: 자동 / 수동 */}
+          {/* 모드 전환: 자동 / 수동 / 복합 */}
           <nav className="flex shrink-0 items-center gap-1 bg-muted rounded-lg p-0.5 mr-1">
             <span className="px-3 py-1 text-xs font-bold rounded-md bg-card text-primary shadow-sm">
               자동
@@ -261,6 +261,12 @@ export default function Home() {
               className="px-3 py-1 text-xs font-medium rounded-md text-muted-foreground hover:text-foreground transition-colors"
             >
               수동
+            </Link>
+            <Link
+              to="/composite"
+              className="px-3 py-1 text-xs font-medium rounded-md text-muted-foreground hover:text-foreground transition-colors"
+            >
+              복합
             </Link>
           </nav>
           <button onClick={() => setShowSessions(!showSessions)}
