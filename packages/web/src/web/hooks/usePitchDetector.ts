@@ -150,9 +150,10 @@ export function usePitchDetector(
         const fYin = detectPitchYIN(winBuf, ctx.sampleRate, 26, 5000, 0.12);
 
         if (fYin > 0) {
-          // 스펙트럼 가져와서 HPS 옵타브 보정
+          // 스펙트럼 가져와서 HPS 옵타브 보정 (고음 keyIndex >= 60은 비활성화)
           analyser.getFloatFrequencyData(spec as Float32Array<ArrayBuffer>);
-          const fCorrected = correctOctaveByHPS(fYin, spec, ctx.sampleRate, analyser.fftSize, 5);
+          const tempKi = freqToCentOffset(fYin)?.keyIndex ?? 0;
+          const fCorrected = correctOctaveByHPS(fYin, spec, ctx.sampleRate, analyser.fftSize, 5, tempKi);
 
           const r = freqToCentOffset(fCorrected);
           if (r) {
