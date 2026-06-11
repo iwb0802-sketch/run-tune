@@ -211,7 +211,18 @@ export default function TuningCurveChart({ data, activeKeyIndex, showStrobeOnly 
     return { upper: upper.join(" "), lower: lower.join(" ") };
   }, [visStart, visEnd, xOf]);
 
-  // Y축 눈금
+  // 기준음선 (RAILSBACK 중앙값 — 부드러운 곡선)
+  const railsbackPath = useMemo(() => {
+    const pts: string[] = [];
+    for (let i = visStart; i <= visEnd; i++) {
+      const x = xOf(i);
+      const y = yOf(RAILSBACK[i]);
+      pts.push(i === visStart ? `M ${x.toFixed(1)} ${y.toFixed(1)}` : `L ${x.toFixed(1)} ${y.toFixed(1)}`);
+    }
+    return pts.join(" ");
+  }, [visStart, visEnd, xOf]);
+
+    // Y축 눈금
   const yMajor = [-40,-30,-20,-10,0,10,20,30,40];
   const yMinor: number[] = [];
   for (let c = -40; c <= 40; c += 2) { if (!yMajor.includes(c)) yMinor.push(c); }
@@ -334,6 +345,11 @@ export default function TuningCurveChart({ data, activeKeyIndex, showStrobeOnly 
           <g clipPath="url(#plotClip)">
             <path d={stepPath.upper} fill="none" stroke="#1f2937" strokeWidth={1.4} />
             <path d={stepPath.lower} fill="none" stroke="#1f2937" strokeWidth={1.4} />
+          </g>
+
+          {/* 기준음선 — RAILSBACK 중앙값 빨간 실선 */}
+          <g clipPath="url(#plotClip)">
+            <path d={railsbackPath} fill="none" stroke="#ef4444" strokeWidth={1.8} opacity={0.85} />
           </g>
 
           {/* Y축 왼쪽 */}
@@ -501,6 +517,25 @@ export default function TuningCurveChart({ data, activeKeyIndex, showStrobeOnly 
         </g>
       </svg>
 
+      {/* 범례 */}
+      <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 px-1 text-xs" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block w-6 h-0.5 bg-gray-800 rounded" style={{ borderTop: "1.4px solid #1f2937" }} />
+          <span className="text-gray-400">허용범위</span>
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block w-6 h-0.5 rounded" style={{ background: "#ef4444" }} />
+          <span className="text-gray-400">기준음 (스트레치 중앙값)</span>
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block w-2.5 h-2.5 rounded-full bg-[#1e3a5f]" />
+          <span className="text-gray-400">자동감지</span>
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block w-0 h-0" style={{ borderLeft: "5px solid transparent", borderRight: "5px solid transparent", borderBottom: "8px solid #d97706" }} />
+          <span className="text-gray-400">스트로브</span>
+        </span>
+      </div>
 
     </div>
   );

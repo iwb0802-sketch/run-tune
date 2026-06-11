@@ -12,6 +12,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { unlockAudio } from "@/lib/tuner/sharedAudio";
 import { PIANO_KEYS, usePitchDetector, type PitchResult } from "@/hooks/usePitchDetector";
 import { useTargetedStrobe } from "@/hooks/useTargetedStrobe";
+import { RAILSBACK } from "@/lib/tuner/tuningCurveData";
 
 export interface ReferenceResult {
   frequency: number;
@@ -105,7 +106,8 @@ export function useReferenceTuner(
   fftSize: 4096 | 8192 = 4096,
 ): UseReferenceTunerReturn {
   const targetKey = PIANO_KEYS[targetKeyIndex];
-  const etFreq = targetKey?.freq ?? 440;
+  const railsbackCents = RAILSBACK[targetKeyIndex] ?? 0;
+  const etFreq = (targetKey?.freq ?? 440) * Math.pow(2, railsbackCents / 1200);
 
   // ── 기준음 상태 ──────────────────────────────────────────────────
   const [isPlayingRef, setIsPlayingRef] = useState(false);
