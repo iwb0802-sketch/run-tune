@@ -1,7 +1,6 @@
 {
   "buildCommand": "bunx vite build",
   "outputDirectory": "dist",
-  "installCommand": "cd ../.. && bun install --frozen-lockfile",
   "framework": null,
   "rewrites": [
     { "source": "/((?!api/.*).*)", "destination": "/index.html" }
