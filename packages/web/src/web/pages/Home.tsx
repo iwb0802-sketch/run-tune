@@ -268,6 +268,12 @@ export default function Home() {
             >
               복합
             </Link>
+            <Link
+              to="/reference"
+              className="px-3 py-1 text-xs font-medium rounded-md text-muted-foreground hover:text-foreground transition-colors"
+            >
+              기준음
+            </Link>
           </nav>
           <button onClick={() => setShowSessions(!showSessions)}
             className="flex shrink-0 items-center gap-1.5 px-2.5 py-1.5 text-sm bg-muted hover:bg-muted rounded-lg transition-colors sm:px-3"
