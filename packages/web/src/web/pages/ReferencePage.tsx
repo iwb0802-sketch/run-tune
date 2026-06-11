@@ -214,10 +214,10 @@ export default function ReferencePage() {
 
             {/* 구간 탭 + 건반 진행 */}
             <div className="bg-card border border-border rounded-xl px-4 pt-4 pb-3 shadow-sm">
-              <SectionTabs section={seq.section} onSection={seq.setSection} />
+              <SectionTabs section={seq.section} onChange={seq.setSection} />
               <div className="mt-3">
                 <TargetNoteBar
-                  targetKeyIndex={seq.targetKeyIndex}
+                  keyIndex={seq.targetKeyIndex}
                   indexInOrder={seq.indexInOrder}
                   total={seq.total}
                   canPrev={seq.canPrev}
