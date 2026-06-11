@@ -107,7 +107,8 @@ export function useReferenceTuner(
   const targetKey = PIANO_KEYS[targetKeyIndex];
   // 스트레치 반영 기준 주파수
   const railsbackCents = RAILSBACK[targetKeyIndex] ?? 0;
-  const etFreq = (targetKey?.freq ?? 440) * Math.pow(2, railsbackCents / 1200);
+  const etFreqPure = targetKey?.freq ?? 440;                                      // ET 순정 (cents 계산 기준)
+  const etFreq = etFreqPure * Math.pow(2, railsbackCents / 1200);                 // 스트레치 반영 (재생용)
 
   // ── 기준음 상태 ──────────────────────────────────────────────────
   const [isPlayingRef, setIsPlayingRef] = useState(false);
@@ -241,7 +242,7 @@ export function useReferenceTuner(
 
   const handlePitch = useCallback((p: PitchResult) => {
     if (p.confidence < 0.5) return;
-    const centsFromET = 1200 * Math.log2(p.frequency / etFreq);
+    const centsFromET = 1200 * Math.log2(p.frequency / etFreqPure);  // ET 순정 기준
     if (Math.abs(centsFromET) > 50) return;
     const r: ReferenceResult = {
       frequency: p.frequency,
@@ -251,7 +252,7 @@ export function useReferenceTuner(
     };
     setResult(r);
     latestResultRef.current = r;
-  }, [etFreq, targetKeyIndex]);
+  }, [etFreqPure, targetKeyIndex]);
 
   const { isListening, startListening, stopListening, error, stream, audioContext } =
     usePitchDetector(handlePitch, fftSize);
