@@ -2,10 +2,11 @@
  * useReferenceTuner.ts
  * 기준음 재생 + 실측 cents 비교 훅
  *
- * 기준음: 피아노 음색 합성 (배음 오실레이터 + ADSR 엔벨로프)
- * - 저음(0~26): 배음 풍부 + 긴 서스테인 → 저음 스피커에서도 잘 들림
- * - 중음(27~60): 균형잡힌 배음
- * - 고음(61~87): 배음 적게 + 빠른 감쇠
+ * 기준음: Salamander Grand Piano 실제 샘플 기반
+ * - https://tonejs.github.io/audio/salamander/
+ * - 29개 기준 노트(A/C/D#/F# × 옥타브) — 나머지는 playbackRate로 피치시프트
+ * - RAILSBACK 스트레치 튜닝 cents 반영 → playbackRate에 포함
+ * - 샘플 lazy 캐시 (AudioContext 기준)
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -34,70 +35,68 @@ export interface UseReferenceTunerReturn {
   stableCents: number | null;
 }
 
-// ── 피아노 음색 파라미터 ──────────────────────────────────────────────
-interface PianoParams {
-  // 배음: [배수, 상대볼륨] 쌍
-  partials: [number, number][];
-  attack: number;   // s
-  decay: number;    // s
-  sustain: number;  // 0~1
-  release: number;  // s
-  duration: number; // 재생 총 길이 s (버튼 켜두는 동안은 sustain 유지)
+// ── Salamander 샘플 노트 정의 ───────────────────────────────────────────
+// midi 번호 → 샘플 파일명 매핑
+// Salamander: A0~A7, C1~C7, D#1~D#7, F#1~F#7
+const SAMPLE_BASE = "https://tonejs.github.io/audio/salamander/";
+
+// 샘플로 존재하는 미디 번호 목록
+const SAMPLE_MIDIS: { midi: number; name: string }[] = [
+  { midi: 21, name: "A0" },
+  { midi: 24, name: "C1" },  { midi: 27, name: "Ds1" }, { midi: 30, name: "Fs1" },
+  { midi: 33, name: "A1" },
+  { midi: 36, name: "C2" },  { midi: 39, name: "Ds2" }, { midi: 42, name: "Fs2" },
+  { midi: 45, name: "A2" },
+  { midi: 48, name: "C3" },  { midi: 51, name: "Ds3" }, { midi: 54, name: "Fs3" },
+  { midi: 57, name: "A3" },
+  { midi: 60, name: "C4" },  { midi: 63, name: "Ds4" }, { midi: 66, name: "Fs4" },
+  { midi: 69, name: "A4" },
+  { midi: 72, name: "C5" },  { midi: 75, name: "Ds5" }, { midi: 78, name: "Fs5" },
+  { midi: 81, name: "A5" },
+  { midi: 84, name: "C6" },  { midi: 87, name: "Ds6" }, { midi: 90, name: "Fs6" },
+  { midi: 93, name: "A6" },
+  { midi: 96, name: "C7" },  { midi: 99, name: "Ds7" }, { midi: 102, name: "Fs7" },
+  { midi: 105, name: "A7" },
+];
+
+// 건반 midi에서 가장 가까운 샘플 찾기
+function findNearestSample(midi: number): { midi: number; name: string } {
+  let best = SAMPLE_MIDIS[0];
+  let minDist = Math.abs(midi - SAMPLE_MIDIS[0].midi);
+  for (const s of SAMPLE_MIDIS) {
+    const d = Math.abs(midi - s.midi);
+    if (d < minDist) { minDist = d; best = s; }
+  }
+  return best;
 }
 
-function getPianoParams(keyIndex: number): PianoParams {
-  if (keyIndex <= 15) {
-    // 초저음 (1~16번) — 배음 매우 풍부, 긴 서스테인
-    return {
-      partials: [
-        [1, 0.5], [2, 1.0], [3, 0.7], [4, 0.5],
-        [5, 0.3], [6, 0.2], [7, 0.15], [8, 0.1],
-      ],
-      attack: 0.008, decay: 0.6, sustain: 0.7, release: 1.2, duration: 6,
-    };
-  } else if (keyIndex <= 26) {
-    // 저음 (17~27번)
-    return {
-      partials: [
-        [1, 0.6], [2, 1.0], [3, 0.6], [4, 0.4],
-        [5, 0.25], [6, 0.15], [7, 0.1],
-      ],
-      attack: 0.007, decay: 0.5, sustain: 0.65, release: 1.0, duration: 5,
-    };
-  } else if (keyIndex <= 48) {
-    // 중저음 (28~49번)
-    return {
-      partials: [
-        [1, 0.8], [2, 0.9], [3, 0.5], [4, 0.3],
-        [5, 0.15], [6, 0.08],
-      ],
-      attack: 0.006, decay: 0.4, sustain: 0.55, release: 0.8, duration: 4,
-    };
-  } else if (keyIndex <= 60) {
-    // 중음 (50~61번)
-    return {
-      partials: [
-        [1, 1.0], [2, 0.6], [3, 0.3], [4, 0.15], [5, 0.07],
-      ],
-      attack: 0.005, decay: 0.35, sustain: 0.45, release: 0.6, duration: 3.5,
-    };
-  } else if (keyIndex <= 75) {
-    // 고음 (62~76번)
-    return {
-      partials: [
-        [1, 1.0], [2, 0.4], [3, 0.15], [4, 0.06],
-      ],
-      attack: 0.004, decay: 0.25, sustain: 0.3, release: 0.4, duration: 2.5,
-    };
-  } else {
-    // 최고음 (77~88번)
-    return {
-      partials: [
-        [1, 1.0], [2, 0.2], [3, 0.06],
-      ],
-      attack: 0.003, decay: 0.18, sustain: 0.2, release: 0.3, duration: 1.8,
-    };
-  }
+// ── 샘플 캐시 (모듈 레벨 — AudioContext 재사용) ─────────────────────────
+const bufferCache = new Map<string, AudioBuffer>();
+const loadingPromises = new Map<string, Promise<AudioBuffer>>();
+
+async function loadSample(ctx: AudioContext, sampleName: string): Promise<AudioBuffer> {
+  if (bufferCache.has(sampleName)) return bufferCache.get(sampleName)!;
+  if (loadingPromises.has(sampleName)) return loadingPromises.get(sampleName)!;
+
+  const promise = (async () => {
+    const url = `${SAMPLE_BASE}${sampleName}.mp3`;
+    const resp = await fetch(url);
+    const arrayBuf = await resp.arrayBuffer();
+    const audioBuf = await ctx.decodeAudioData(arrayBuf);
+    bufferCache.set(sampleName, audioBuf);
+    loadingPromises.delete(sampleName);
+    return audioBuf;
+  })();
+
+  loadingPromises.set(sampleName, promise);
+  return promise;
+}
+
+// ── 재생 중 노드 관리 ────────────────────────────────────────────────────
+interface ActiveNodes {
+  source: AudioBufferSourceNode;
+  gainNode: GainNode;
+  ctx: AudioContext;
 }
 
 export function useReferenceTuner(
@@ -106,108 +105,97 @@ export function useReferenceTuner(
   fftSize: 4096 | 8192 = 4096,
 ): UseReferenceTunerReturn {
   const targetKey = PIANO_KEYS[targetKeyIndex];
+  // 스트레치 반영 기준 주파수
   const railsbackCents = RAILSBACK[targetKeyIndex] ?? 0;
   const etFreq = (targetKey?.freq ?? 440) * Math.pow(2, railsbackCents / 1200);
 
   // ── 기준음 상태 ──────────────────────────────────────────────────
   const [isPlayingRef, setIsPlayingRef] = useState(false);
-  const [refVolume, setRefVolumeState] = useState(0.35);
+  const [refVolume, setRefVolumeState] = useState(0.7);
   const isPlayingRefRef = useRef(false);
-  const refVolumeRef = useRef(0.35);
-
-  // 현재 재생 중인 노드들
-  const activeOscsRef = useRef<OscillatorNode[]>([]);
-  const activeGainsRef = useRef<GainNode[]>([]);
-  const masterGainRef = useRef<GainNode | null>(null);
+  const refVolumeRef = useRef(0.7);
+  const activeNodesRef = useRef<ActiveNodes | null>(null);
   const releaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── 정지 ─────────────────────────────────────────────────────────
   const stopRef = useCallback(() => {
     if (releaseTimerRef.current) { clearTimeout(releaseTimerRef.current); releaseTimerRef.current = null; }
 
-    if (masterGainRef.current) {
+    const nodes = activeNodesRef.current;
+    if (nodes) {
       try {
-        const ctx = masterGainRef.current.context;
+        const { gainNode, source, ctx } = nodes;
         const now = ctx.currentTime;
-        const params = getPianoParams(targetKeyIndex);
-        masterGainRef.current.gain.cancelScheduledValues(now);
-        masterGainRef.current.gain.setValueAtTime(masterGainRef.current.gain.value, now);
-        masterGainRef.current.gain.linearRampToValueAtTime(0, now + params.release);
-        const oscs = [...activeOscsRef.current];
+        const release = 0.4;
+        gainNode.gain.cancelScheduledValues(now);
+        gainNode.gain.setValueAtTime(gainNode.gain.value, now);
+        gainNode.gain.linearRampToValueAtTime(0, now + release);
         releaseTimerRef.current = setTimeout(() => {
-          oscs.forEach(o => { try { o.stop(); } catch { /* 무시 */ } });
-          activeOscsRef.current = [];
-          activeGainsRef.current = [];
-          masterGainRef.current = null;
-        }, params.release * 1000 + 50);
+          try { source.stop(); } catch { /* 무시 */ }
+          activeNodesRef.current = null;
+        }, release * 1000 + 50);
       } catch {
-        activeOscsRef.current.forEach(o => { try { o.stop(); } catch { /* 무시 */ } });
-        activeOscsRef.current = [];
-        activeGainsRef.current = [];
-        masterGainRef.current = null;
+        try { activeNodesRef.current?.source.stop(); } catch { /* 무시 */ }
+        activeNodesRef.current = null;
       }
     }
 
     setIsPlayingRef(false);
     isPlayingRefRef.current = false;
-  }, [targetKeyIndex]);
+  }, []);
 
-  // ── 재생 (피아노 음색 합성) ───────────────────────────────────────
-  const startRef = useCallback(async (freq: number, vol: number, keyIdx: number) => {
-    // 기존 정지
+  // ── 재생 (Salamander 샘플 기반) ────────────────────────────────────
+  const startRef = useCallback(async (midi: number, railsCents: number, vol: number) => {
+    // 기존 즉시 중단
     if (releaseTimerRef.current) { clearTimeout(releaseTimerRef.current); releaseTimerRef.current = null; }
-    activeOscsRef.current.forEach(o => { try { o.stop(); } catch { /* 무시 */ } });
-    activeOscsRef.current = [];
-    activeGainsRef.current = [];
-    masterGainRef.current = null;
+    if (activeNodesRef.current) {
+      try { activeNodesRef.current.source.stop(); } catch { /* 무시 */ }
+      activeNodesRef.current = null;
+    }
 
     try {
       const ctx = await unlockAudio();
+
+      // 가장 가까운 샘플 로드
+      const sample = findNearestSample(midi);
+      const buffer = await loadSample(ctx, sample.name);
+
+      // 피치시프트 비율:
+      // 목표 midi - 샘플 midi = 반음 차이 → 2^(semitones/12)
+      // 거기에 스트레치 cents 추가 → 2^(railsCents/1200)
+      const semitoneDiff = midi - sample.midi;
+      const playbackRate = Math.pow(2, semitoneDiff / 12) * Math.pow(2, railsCents / 1200);
+
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.playbackRate.value = playbackRate;
+      // 샘플 루프: sustain 구간 (샘플 후반부 루프로 자연스럽게 유지)
+      // Salamander은 긴 샘플이므로 루프 안 해도 충분히 김 — 루프 없음
+
+      const gainNode = ctx.createGain();
       const now = ctx.currentTime;
-      const p = getPianoParams(keyIdx);
+      const attack = 0.008;
+      gainNode.gain.setValueAtTime(0, now);
+      gainNode.gain.linearRampToValueAtTime(vol, now + attack);
+      gainNode.connect(ctx.destination);
+      source.connect(gainNode);
+      source.start(now);
 
-      // 마스터 게인 (ADSR 엔벨로프)
-      const master = ctx.createGain();
-      master.gain.setValueAtTime(0, now);
-      master.gain.linearRampToValueAtTime(vol, now + p.attack);
-      master.gain.linearRampToValueAtTime(vol * p.sustain, now + p.attack + p.decay);
-      master.connect(ctx.destination);
-      masterGainRef.current = master;
-
-      // 배음 오실레이터들
-      const totalWeight = p.partials.reduce((s, [, w]) => s + w, 0);
-      p.partials.forEach(([harmonic, weight]) => {
-        const hFreq = freq * harmonic;
-        if (hFreq > 20000) return; // 가청 범위 초과 무시
-
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-
-        osc.type = "sine";
-        osc.frequency.value = hFreq;
-
-        // 배음별 볼륨 + 고배음일수록 빠르게 감쇠
-        const harmGain = weight / totalWeight;
-        const harmDecayMul = harmonic <= 2 ? 1.0 : 1.0 / (harmonic * 0.4);
-        gain.gain.setValueAtTime(harmGain, now);
-        gain.gain.linearRampToValueAtTime(harmGain * harmDecayMul, now + p.attack + p.decay);
-
-        osc.connect(gain);
-        gain.connect(master);
-        osc.start(now);
-
-        activeOscsRef.current.push(osc);
-        activeGainsRef.current.push(gain);
-      });
-
+      activeNodesRef.current = { source, gainNode, ctx };
       setIsPlayingRef(true);
       isPlayingRefRef.current = true;
 
-      // sustain 이후 자동 release (버튼 켜둔 동안은 계속 유지)
-      // → 버튼으로 끄기 전까지 sustain 레벨 유지 (자동 종료 없음)
+      // 샘플 끝나면 자동 정리
+      source.onended = () => {
+        if (activeNodesRef.current?.source === source) {
+          activeNodesRef.current = null;
+          setIsPlayingRef(false);
+          isPlayingRefRef.current = false;
+        }
+      };
 
     } catch (e) {
-      console.warn("ref audio failed:", e);
+      console.warn("ref audio (sampler) failed:", e);
     }
   }, []);
 
@@ -215,33 +203,35 @@ export function useReferenceTuner(
     if (isPlayingRefRef.current) {
       stopRef();
     } else {
-      await startRef(etFreq, refVolumeRef.current, targetKeyIndex);
+      const midi = targetKey?.midi ?? 69;
+      await startRef(midi, railsbackCents, refVolumeRef.current);
     }
-  }, [etFreq, targetKeyIndex, startRef, stopRef]);
+  }, [targetKey, railsbackCents, startRef, stopRef]);
 
   const setRefVolume = useCallback((v: number) => {
     refVolumeRef.current = v;
     setRefVolumeState(v);
-    if (masterGainRef.current && isPlayingRefRef.current) {
-      const ctx = masterGainRef.current.context;
-      const p = getPianoParams(targetKeyIndex);
-      masterGainRef.current.gain.cancelScheduledValues(ctx.currentTime);
-      masterGainRef.current.gain.setValueAtTime(v * p.sustain, ctx.currentTime);
+    const nodes = activeNodesRef.current;
+    if (nodes && isPlayingRefRef.current) {
+      const now = nodes.ctx.currentTime;
+      nodes.gainNode.gain.cancelScheduledValues(now);
+      nodes.gainNode.gain.setValueAtTime(v, now);
     }
-  }, [targetKeyIndex]);
+  }, []);
 
-  // 건반 변경 시 재생 중이면 새 건반 음색으로 자동 전환
+  // 건반 변경 시 재생 중이면 새 건반 샘플로 자동 전환
   useEffect(() => {
-    if (isPlayingRefRef.current) {
-      startRef(etFreq, refVolumeRef.current, targetKeyIndex);
+    if (isPlayingRefRef.current && targetKey) {
+      startRef(targetKey.midi, railsbackCents, refVolumeRef.current);
     }
-  }, [etFreq, targetKeyIndex, startRef]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetKeyIndex]);
 
   // 언마운트 시 정리
   useEffect(() => {
     return () => {
       if (releaseTimerRef.current) clearTimeout(releaseTimerRef.current);
-      activeOscsRef.current.forEach(o => { try { o.stop(); } catch { /* 무시 */ } });
+      try { activeNodesRef.current?.source.stop(); } catch { /* 무시 */ }
     };
   }, []);
 
