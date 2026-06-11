@@ -1,0 +1,230 @@
+@import "tailwindcss" source(none);
+@source "../web";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Piano Tuning Scope — Design System
+ */
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-ring-offset-background: var(--background);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Piano tuner semantic tokens */
+  --color-precision: var(--precision);
+  --color-precision-foreground: var(--precision-foreground);
+  --color-precision-soft: var(--precision-soft);
+  --color-in-tune: var(--in-tune);
+  --color-in-tune-foreground: var(--in-tune-foreground);
+  --color-in-tune-soft: var(--in-tune-soft);
+  --color-warn: var(--warn);
+  --color-warn-foreground: var(--warn-foreground);
+  --color-warn-soft: var(--warn-soft);
+  --color-off: var(--off);
+  --color-off-foreground: var(--off-foreground);
+  --color-off-soft: var(--off-soft);
+  --color-strobe: var(--strobe);
+  --color-strobe-foreground: var(--strobe-foreground);
+  --color-reference: var(--reference);
+  --color-reference-foreground: var(--reference-foreground);
+  --color-instrument: var(--instrument);
+  --color-instrument-foreground: var(--instrument-foreground);
+  --color-instrument-muted: var(--instrument-muted);
+  --color-primary-soft: var(--primary-soft);
+
+  --font-display: "Noto Sans KR", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+:root {
+  --radius: 0.75rem;
+
+  --background: oklch(0.985 0.005 250);
+  --foreground: oklch(0.18 0.03 260);
+
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0.03 260);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0.03 260);
+
+  --primary: oklch(0.42 0.18 268);
+  --primary-foreground: oklch(0.985 0.005 250);
+  --primary-soft: oklch(0.95 0.03 268);
+
+  --secondary: oklch(0.96 0.01 255);
+  --secondary-foreground: oklch(0.22 0.03 260);
+  --muted: oklch(0.96 0.01 255);
+  --muted-foreground: oklch(0.5 0.03 258);
+  --accent: oklch(0.95 0.02 268);
+  --accent-foreground: oklch(0.3 0.12 268);
+
+  --destructive: oklch(0.6 0.22 27);
+  --destructive-foreground: oklch(0.985 0.005 250);
+
+  --border: oklch(0.92 0.01 258);
+  --input: oklch(0.92 0.01 258);
+  --ring: oklch(0.55 0.16 268);
+
+  --precision: oklch(0.46 0.2 295);
+  --precision-foreground: oklch(0.985 0.005 250);
+  --precision-soft: oklch(0.96 0.03 295);
+
+  --in-tune: oklch(0.62 0.16 152);
+  --in-tune-foreground: oklch(0.985 0.005 250);
+  --in-tune-soft: oklch(0.95 0.05 152);
+
+  --warn: oklch(0.74 0.16 75);
+  --warn-foreground: oklch(0.18 0.03 260);
+  --warn-soft: oklch(0.96 0.05 80);
+
+  --off: oklch(0.62 0.22 27);
+  --off-foreground: oklch(0.985 0.005 250);
+  --off-soft: oklch(0.96 0.04 27);
+
+  --strobe: oklch(0.72 0.18 60);
+  --strobe-foreground: oklch(0.18 0.03 260);
+
+  --reference: oklch(0.74 0.16 70);
+  --reference-foreground: oklch(0.18 0.03 260);
+
+  --instrument: oklch(0.16 0.01 260);
+  --instrument-foreground: oklch(0.95 0.005 250);
+  --instrument-muted: oklch(0.5 0.02 260);
+
+  --chart-1: var(--primary);
+  --chart-2: var(--in-tune);
+  --chart-3: var(--warn);
+  --chart-4: var(--off);
+  --chart-5: var(--precision);
+
+  --sidebar: oklch(0.985 0.005 250);
+  --sidebar-foreground: oklch(0.18 0.03 260);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: oklch(0.96 0.01 255);
+  --sidebar-accent-foreground: oklch(0.22 0.03 260);
+  --sidebar-border: oklch(0.92 0.01 258);
+  --sidebar-ring: var(--ring);
+}
+
+.dark {
+  --background: oklch(0.16 0.01 260);
+  --foreground: oklch(0.96 0.005 250);
+  --card: oklch(0.22 0.02 260);
+  --card-foreground: oklch(0.96 0.005 250);
+  --popover: oklch(0.22 0.02 260);
+  --popover-foreground: oklch(0.96 0.005 250);
+
+  --primary: oklch(0.72 0.16 268);
+  --primary-foreground: oklch(0.16 0.02 260);
+  --primary-soft: oklch(0.3 0.08 268);
+
+  --secondary: oklch(0.28 0.03 260);
+  --secondary-foreground: oklch(0.96 0.005 250);
+  --muted: oklch(0.28 0.03 260);
+  --muted-foreground: oklch(0.7 0.02 258);
+  --accent: oklch(0.3 0.08 268);
+  --accent-foreground: oklch(0.96 0.005 250);
+
+  --destructive: oklch(0.7 0.2 22);
+  --destructive-foreground: oklch(0.16 0.02 260);
+
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.6 0.16 268);
+
+  --precision: oklch(0.7 0.2 295);
+  --precision-foreground: oklch(0.16 0.02 260);
+  --precision-soft: oklch(0.3 0.08 295);
+
+  --in-tune: oklch(0.72 0.18 152);
+  --in-tune-foreground: oklch(0.16 0.02 260);
+  --in-tune-soft: oklch(0.28 0.06 152);
+
+  --warn: oklch(0.8 0.16 75);
+  --warn-foreground: oklch(0.16 0.02 260);
+  --warn-soft: oklch(0.32 0.06 80);
+
+  --off: oklch(0.72 0.2 27);
+  --off-foreground: oklch(0.16 0.02 260);
+  --off-soft: oklch(0.3 0.08 27);
+
+  --strobe: oklch(0.78 0.18 60);
+  --strobe-foreground: oklch(0.16 0.02 260);
+
+  --reference: oklch(0.78 0.16 70);
+  --reference-foreground: oklch(0.16 0.02 260);
+
+  --instrument: oklch(0.1 0.01 260);
+  --instrument-foreground: oklch(0.96 0.005 250);
+  --instrument-muted: oklch(0.55 0.02 260);
+
+  --sidebar: oklch(0.22 0.02 260);
+  --sidebar-foreground: oklch(0.96 0.005 250);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: oklch(0.28 0.03 260);
+  --sidebar-accent-foreground: oklch(0.96 0.005 250);
+  --sidebar-border: oklch(1 0 0 / 12%);
+  --sidebar-ring: var(--ring);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  html, body {
+    font-family: var(--font-display);
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+  }
+
+  .font-mono, kbd {
+    font-family: var(--font-mono);
+  }
+}
