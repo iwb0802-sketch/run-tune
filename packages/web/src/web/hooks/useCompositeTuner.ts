@@ -55,12 +55,16 @@ export interface UseCompositeTunerReturn {
 
 const WINDOW = 15;
 const MIN_MATCH = 8;
-const CROSS_VALID_THRESHOLD = 8;   // ¢
+const CROSS_VALID_THRESHOLD = 8;        // ¢ (중고음)
+const CROSS_VALID_THRESHOLD_LOW = 15;   // ¢ (저음 ≤26: YIN 오차 여유)
 const STABLE_DURATION_MS = 900;
 const MIN_SAMPLES = 8;
 const MIN_RMS = 0.004;
+const MIN_RMS_LOW = 0.002;              // 저음 현 진폭이 작아서 더 낮게
 const PEAK_RATIO = 0.55;
 const DOMINANCE_RATIO = 1.3;
+const COARSE_STEP_CENTS_LOW = 1;        // 저음 coarse scan 스텝 (1¢)
+const COARSE_STEP_CENTS_MID = 3;        // 중고음 coarse scan 스텝 (3¢)
 
 export function useCompositeTuner(
   onConfirmed?: (result: CompositeResult) => void,
@@ -152,7 +156,13 @@ export function useCompositeTuner(
         analyser.getFloatTimeDomainData(buf as Float32Array<ArrayBuffer>);
         const rms = getRMS(buf);
 
-        if (rms < MIN_RMS) {
+        // 저음 구간 여부 (키 미확정 시엔 일반 기준 사용)
+        const isLowGuess = recentKeys.current.length > 0
+          ? (recentKeys.current[recentKeys.current.length - 1] <= 26)
+          : false;
+        const rmsThreshold = isLowGuess ? MIN_RMS_LOW : MIN_RMS;
+
+        if (rms < rmsThreshold) {
           recentKeys.current = [];
           recentCents.current = [];
           setResult(null);
@@ -223,11 +233,14 @@ export function useCompositeTuner(
         const signalOk = gTarget.magnitude > Math.max(magLo, magHi, 1e-9) * DOMINANCE_RATIO;
 
         // Goertzel cent: 측정 주파수 → 기본음 환산 → 절대 cent
-        // coarse scan ±50¢, 3¢ 스텝
+        // 저음: ±50¢ 1¢ 스텝(100포인트), 중고음: ±50¢ 3¢ 스텝(34포인트)
+        const isLow = stableKi <= 26;
+        const scanStep = isLow ? COARSE_STEP_CENTS_LOW : COARSE_STEP_CENTS_MID;
+        const scanRange = Math.round(50 / scanStep);
         let bestFreq = targetFreq;
         let bestMag = -1;
-        for (let i = -17; i <= 17; i++) {
-          const f = targetFreq * Math.pow(2, (i * 3) / 1200);
+        for (let i = -scanRange; i <= scanRange; i++) {
+          const f = targetFreq * Math.pow(2, (i * scanStep) / 1200);
           const mag = goertzel(buf, sr, f).magnitude;
           if (mag > bestMag) { bestMag = mag; bestFreq = f; }
         }
@@ -235,7 +248,8 @@ export function useCompositeTuner(
         const goertzelCents = Math.round(1200 * Math.log2(measuredBaseHz / baseFreq) * 10) / 10;
 
         // ── 4. 교차검증 ─────────────────────────────────────────────
-        const crossValid = signalOk && Math.abs(yinCents - goertzelCents) <= CROSS_VALID_THRESHOLD;
+        const crossThreshold = isLow ? CROSS_VALID_THRESHOLD_LOW : CROSS_VALID_THRESHOLD;
+        const crossValid = signalOk && Math.abs(yinCents - goertzelCents) <= crossThreshold;
         const liveCents = crossValid
           ? Math.round(((yinCents + goertzelCents) / 2) * 10) / 10
           : yinCents;
