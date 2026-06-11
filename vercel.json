@@ -1,8 +1,11 @@
 {
-  "buildCommand": "cd packages/web && bun run build",
+  "buildCommand": "cd packages/web && bunx vite build",
   "outputDirectory": "packages/web/dist",
   "installCommand": "bun install",
   "framework": null,
+  "env": {
+    "BUN_VERSION": "1.3.5"
+  },
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/index" },
     { "source": "/((?!api/.*).*)", "destination": "/index.html" }
