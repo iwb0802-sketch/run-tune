@@ -1,10 +1,9 @@
 {
-  "buildCommand": "cd packages/web && bunx vite build",
-  "outputDirectory": "packages/web/dist",
-  "installCommand": "bun install --frozen-lockfile",
+  "buildCommand": "bunx vite build",
+  "outputDirectory": "dist",
+  "installCommand": "cd ../.. && bun install --frozen-lockfile",
   "framework": null,
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index" },
     { "source": "/((?!api/.*).*)", "destination": "/index.html" }
   ]
 }
