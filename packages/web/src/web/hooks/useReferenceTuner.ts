@@ -162,9 +162,8 @@ export function useReferenceTuner(
   const { strobeCents: stableCents } = useTargetedStrobe(
     isListening ? stream : null,
     isListening ? audioContext : null,
-    800,
-    fftSize,
     targetKeyIndex,
+    { stableDurationMs: 800, fftSize },
   );
 
   return {
