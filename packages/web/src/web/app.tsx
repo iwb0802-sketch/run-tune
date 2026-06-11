@@ -1,7 +1,7 @@
 import { Route, Switch } from "wouter";
 import { Toaster } from "sonner";
 import { Provider } from "./components/provider";
-import { AgentFeedback, RunableBadge } from "@runablehq/website-runtime";
+import { AgentFeedback } from "@runablehq/website-runtime";
 import { Suspense, lazy } from "react";
 import { useAuth } from "./hooks/useAuth";
 
@@ -49,7 +49,7 @@ function App() {
       </Suspense>
       <Toaster richColors position="bottom-right" />
       {import.meta.env.DEV && <AgentFeedback />}
-      {<RunableBadge />}
+
     </Provider>
   );
 }
