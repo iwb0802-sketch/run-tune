@@ -513,12 +513,22 @@ export default function Home() {
                 <div className="flex items-center gap-2 flex-wrap">
                   {/* 마이크 버튼 */}
                   <button
-                    onClick={toggleListening}
+                    onClick={isPro ? toggleListening : undefined}
+                    disabled={!isPro}
+                    title={!isPro ? "Pro 이상 등급에서 사용 가능합니다" : undefined}
                     className={cn(
-                      "flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm transition-all duration-150 active:scale-[0.97]",
-                      isListening ? "bg-off hover:bg-off/90 text-white" : "bg-primary hover:bg-primary/90 text-white"
+                      "flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm transition-all duration-150",
+                      isPro && "active:scale-[0.97]",
+                      !isPro
+                        ? "bg-muted text-muted-foreground cursor-not-allowed opacity-60"
+                        : isListening ? "bg-off hover:bg-off/90 text-white" : "bg-primary hover:bg-primary/90 text-white"
                     )}>
-                    {isListening ? (
+                    {!isPro ? (
+                      <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                      </svg>마이크 시작</>
+                    ) : isListening ? (
                       <><span className="w-2 h-2 rounded-full bg-card animate-pulse" />감지 중지</>
                     ) : (
                       <><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
@@ -529,6 +539,12 @@ export default function Home() {
                       </svg>마이크 시작</>
                     )}
                   </button>
+                  {/* 무료 등급 안내 */}
+                  {!isPro && (
+                    <span className="text-xs text-muted-foreground bg-muted px-2.5 py-1.5 rounded-lg border border-border">
+                      🔒 Pro 이상 전용
+                    </span>
+                  )}
 
                   {/* 복구 중 표시 */}
                   {isRecovering && (

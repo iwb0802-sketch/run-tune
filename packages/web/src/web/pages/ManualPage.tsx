@@ -20,6 +20,8 @@ import { useTuningSession } from "@/hooks/useTuningSession";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { cn } from "@/lib/utils";
 import { exportToPdf, exportToImage } from "@/lib/tuner/exportPdf";
+import { useAuth } from "@/hooks/useAuth";
+import { useUserRole } from "@/hooks/useUserRole";
 
 import SectionTabs from "@/pages/manual/SectionTabs";
 import TargetNoteBar from "@/pages/manual/TargetNoteBar";
@@ -34,6 +36,9 @@ function isLowRange(keyIndex: number): boolean {
 }
 
 export default function ManualPage() {
+  const { user } = useAuth();
+  const { isPro } = useUserRole(user?.id);
+
   const seq = useManualSequence();
   const [autoAdvance, setAutoAdvance] = useState<boolean>(() => {
     try {
@@ -294,16 +299,26 @@ export default function ManualPage() {
         {/* 마이크 + 자동 진행 토글 */}
         <div className="flex items-center gap-2">
           <button
-            onClick={toggleListening}
+            onClick={isPro ? toggleListening : undefined}
+            disabled={!isPro}
+            title={!isPro ? "Pro 이상 등급에서 사용 가능합니다" : undefined}
             className={cn(
-              "flex-1 py-2.5 rounded-xl font-bold text-sm transition-all active:scale-[0.98]",
-              isListening
-                ? "bg-off text-white hover:bg-off/90"
-                : "bg-primary text-white hover:bg-primary/90"
+              "flex-1 py-2.5 rounded-xl font-bold text-sm transition-all",
+              isPro && "active:scale-[0.98]",
+              !isPro
+                ? "bg-muted text-muted-foreground cursor-not-allowed opacity-60"
+                : isListening
+                  ? "bg-off text-white hover:bg-off/90"
+                  : "bg-primary text-white hover:bg-primary/90"
             )}
           >
-            {isListening ? "■ 마이크 끄기" : "● 마이크 켜기"}
+            {!isPro ? "🔒 마이크 켜기" : isListening ? "■ 마이크 끄기" : "● 마이크 켜기"}
           </button>
+          {!isPro && (
+            <span className="text-xs text-muted-foreground bg-muted px-2 py-1.5 rounded-lg border border-border whitespace-nowrap">
+              Pro 전용
+            </span>
+          )}
           <label className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-card border border-border cursor-pointer">
             <input
               type="checkbox"

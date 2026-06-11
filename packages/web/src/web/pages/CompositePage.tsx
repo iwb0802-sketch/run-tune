@@ -17,6 +17,8 @@ import { useWakeLock } from "@/hooks/useWakeLock";
 import { PIANO_KEYS } from "@/hooks/usePitchDetector";
 import TuningCurveChart from "@/components/tuner/TuningCurveChart";
 import { exportToPdf, exportToImage } from "@/lib/tuner/exportPdf";
+import { useAuth } from "@/hooks/useAuth";
+import { useUserRole } from "@/hooks/useUserRole";
 
 const toast = Object.assign(
   (msg: string, opts?: { duration?: number }) => sonnerToast(msg, opts),
@@ -69,6 +71,9 @@ function EngineRow({
 }
 
 export default function CompositePage() {
+  const { user } = useAuth();
+  const { isPro } = useUserRole(user?.id);
+
   const {
     sessions,
     activeSession,
@@ -251,14 +256,24 @@ export default function CompositePage() {
 
         {/* 마이크 버튼 */}
         <button
-          onClick={toggleListening}
+          onClick={isPro ? toggleListening : undefined}
+          disabled={!isPro}
+          title={!isPro ? "Pro 이상 등급에서 사용 가능합니다" : undefined}
           className={cn(
-            "w-full py-3 rounded-xl font-bold text-sm transition-all active:scale-[0.98]",
-            isListening ? "bg-off text-white hover:bg-off/90" : "bg-precision text-white hover:bg-precision/90"
+            "w-full py-3 rounded-xl font-bold text-sm transition-all",
+            isPro && "active:scale-[0.98]",
+            !isPro
+              ? "bg-muted text-muted-foreground cursor-not-allowed opacity-60"
+              : isListening ? "bg-off text-white hover:bg-off/90" : "bg-precision text-white hover:bg-precision/90"
           )}
         >
-          {isListening ? "■ 마이크 끄기" : "● 마이크 켜기"}
+          {!isPro ? "🔒 마이크 켜기 (Pro 전용)" : isListening ? "■ 마이크 끄기" : "● 마이크 켜기"}
         </button>
+        {!isPro && (
+          <p className="text-xs text-center text-muted-foreground">
+            등급을 Pro로 변경하면 마이크를 사용할 수 있습니다.
+          </p>
+        )}
 
         {error && (
           <div className="px-3 py-2 rounded-lg bg-off/10 border border-off/40 text-xs text-off-foreground">
