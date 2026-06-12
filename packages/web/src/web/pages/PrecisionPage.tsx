@@ -5,7 +5,7 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { usePitchDetector, PIANO_KEYS } from "@/hooks/usePitchDetector";
-import { useStrobeDetector } from "@/hooks/useStrobeDetector";
+import { useTargetedStrobe } from "@/hooks/useTargetedStrobe";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { usePrecisionSession } from "@/hooks/usePrecisionSession";
 import { UPPER_ABS, LOWER_ABS } from "@/lib/tuner/tuningCurveData";
@@ -154,12 +154,11 @@ export default function PrecisionPage() {
   const { isListening, currentPitch, startListening, stopListening, error, stream, audioContext } =
     usePitchDetector(handlePitch);
 
-  const { strobeCents } = useStrobeDetector(
+  const { strobeCents } = useTargetedStrobe(
     isListening ? stream : null,
     isListening ? audioContext : null,
-    1200,
-    4096,
-    pendingKeyIndex  // 자동 피치가 확정한 건반 기준으로 옵타브 보정
+    pendingKeyIndex,
+    { stableDurationMs: 1200, fftSize: 4096 }
   );
 
   // 스트로브 확정값 추가 - 새 값이 들어올 때마다 저장
