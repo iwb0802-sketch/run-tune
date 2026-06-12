@@ -15,6 +15,9 @@ import { cn } from "@/lib/utils";
 import { exportToPdf, exportToImage } from "@/lib/tuner/exportPdf";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
+import { useManualSequence } from "@/pages/manual/useManualSequence";
+import SectionTabs from "@/pages/manual/SectionTabs";
+import TargetNoteBar from "@/pages/manual/TargetNoteBar";
 
 function isInRange(keyIndex: number, cents: number): boolean {
   return cents >= LOWER_ABS[keyIndex] && cents <= UPPER_ABS[keyIndex];
@@ -109,16 +112,20 @@ export default function PrecisionPage() {
   const { user } = useAuth();
   const { isPro } = useUserRole(user?.id);
 
+  const seq = useManualSequence();
   const session = usePrecisionSession();
   const {
     activeSession, activeSessionId, createSession, measuredCount,
-    pendingKeyIndex, confirmedAuto, confirmedStrobe, currentLive, isRoundActive,
+    pendingKeyIndex: _rawPending, confirmedAuto, confirmedStrobe, currentLive, isRoundActive,
     autoMedian, strobeMedian, confidence, finalCents,
     canConfirm, canAutoSave, needsRecheck, autoStrobeDiff,
     MAX_AUTO, MAX_STROBE,
     onPitchActive, onSilenceDetected, addStrobeCents,
     confirmCurrent, clearAllMeasurements,
   } = session;
+
+  // 순서 모드: pendingKeyIndex는 항상 seq.targetKeyIndex로 고정
+  const pendingKeyIndex = seq.targetKeyIndex;
 
   const [showGuide, setShowGuide] = useState(true);
   const [userName, setUserName] = useState("");
@@ -128,9 +135,15 @@ export default function PrecisionPage() {
   useWakeLock(true);
 
   // 피치 감지 중 → 버퍼 누적, 0.5초 무음 → 1회 확정
+  // 현재 선택 건반(±2 허용) 범위 밖의 음은 무시
+  const seqTargetRef = useRef(seq.targetKeyIndex);
+  useEffect(() => { seqTargetRef.current = seq.targetKeyIndex; }, [seq.targetKeyIndex]);
+
   const handlePitch = useCallback((result: any) => {
     if (result.confidence < 0.55) return;
-    onPitchActive(result.keyIndex, result.cents);
+    // 선택 건반 ±3 범위만 허용 (다른 건반 소리 무시)
+    if (Math.abs(result.keyIndex - seqTargetRef.current) > 3) return;
+    onPitchActive(seqTargetRef.current, result.cents);
     // 무음 타이머 리셋 (0.5초 무음 = 타건 종료)
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     silenceTimerRef.current = setTimeout(() => {
@@ -176,8 +189,11 @@ export default function PrecisionPage() {
     ) {
       lastSavedKeyRef.current = pendingKeyIndex;
       confirmCurrent(currentPitch?.frequency ?? 0);
+      // 자동저장 완료 → 1.2초 후 다음 건반으로 자동 이동
+      setTimeout(() => {
+        if (seq.canNext) seq.next();
+      }, 1200);
     }
-    // 키가 바뀌었거나 측정 리셋되면 마지막 저장 키도 해제
     if (pendingKeyIndex === null) lastSavedKeyRef.current = null;
   }, [canAutoSave, finalCents, activeSessionId, pendingKeyIndex]);
 
@@ -226,6 +242,23 @@ export default function PrecisionPage() {
             className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center text-muted-foreground text-sm font-bold">?</button>
         </div>
       </header>
+
+      {/* 구간 탭 */}
+      <div className="px-4 pt-3">
+        <SectionTabs section={seq.section} onChange={seq.setSection} />
+      </div>
+      {/* 건반 순서 네비게이션 */}
+      <div className="px-4 pt-2 pb-1">
+        <TargetNoteBar
+          keyIndex={seq.targetKeyIndex}
+          indexInOrder={seq.indexInOrder}
+          total={seq.total}
+          canPrev={seq.canPrev}
+          canNext={seq.canNext}
+          onPrev={seq.prev}
+          onNext={seq.next}
+        />
+      </div>
 
       {/* 안내 카드 */}
       {showGuide && (
