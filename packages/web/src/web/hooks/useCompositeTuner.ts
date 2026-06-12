@@ -44,16 +44,28 @@ export interface UseCompositeTunerReturn {
   error: string | null;
 }
 
-const CROSS_VALID_THRESHOLD     = 8;    // ¢ 중고음
+const CROSS_VALID_THRESHOLD     = 8;    // ¢ 중음
 const CROSS_VALID_THRESHOLD_LOW = 15;   // ¢ 저음 ≤26
-const STABLE_DURATION_MS        = 900;
+const CROSS_VALID_THRESHOLD_HIGH = 12;  // ¢ 고음 ≥52 (배음 혼재 감안해 완화)
+const STABLE_DURATION_MS        = 900;  // 중음
+const STABLE_DURATION_MS_HIGH   = 500;  // 고음 — 빠른 decay
 const MIN_SAMPLES               = 8;
+const MIN_SAMPLES_HIGH          = 4;    // 고음 — 짧은 sustain
 const MIN_RMS                   = 0.004;
 const MIN_RMS_LOW               = 0.002;
-const PEAK_RATIO                = 0.55;
+const MIN_RMS_HIGH              = 0.003;
+const PEAK_RATIO                = 0.55; // 중/저음
+const PEAK_RATIO_HIGH           = 0.40; // 고음 — 빠른 decay 허용
+const PEAK_THRESHOLD            = 0.015;
+const PEAK_THRESHOLD_HIGH       = 0.008; // 고음 피크 감도
 const DOMINANCE_RATIO           = 1.3;
 const COARSE_STEP_LOW           = 1;    // 저음 scan 스텝 (¢)
-const COARSE_STEP_MID           = 3;    // 중고음 scan 스텝 (¢)
+const COARSE_STEP_MID           = 3;    // 중음 scan 스텝 (¢)
+const COARSE_STEP_HIGH          = 2;    // 고음 scan 스텝 (¢)
+const SCAN_RANGE_CENTS          = 50;   // 중/저음 ±¢
+const SCAN_RANGE_CENTS_HIGH     = 80;   // 고음 ±¢ (넓게)
+// 고음 구간 경계
+const HIGH_KEY_THRESHOLD        = 52;   // C5 이상 (keyIndex 52+)
 
 // YIN이 잡은 주파수를 targetKeyIndex 기준 절대 cent로 환산
 function yinFreqToCents(fYin: number, baseFreq: number): number | null {
@@ -159,7 +171,8 @@ export function useCompositeTuner(
 
         const ki       = targetKeyRef.current;
         const isLow    = ki <= 26;
-        const rmsMin   = isLow ? MIN_RMS_LOW : MIN_RMS;
+        const isHigh   = ki >= HIGH_KEY_THRESHOLD; // C5+
+        const rmsMin   = isLow ? MIN_RMS_LOW : isHigh ? MIN_RMS_HIGH : MIN_RMS;
 
         if (rms < rmsMin) {
           resetCapture();
@@ -172,8 +185,11 @@ export function useCompositeTuner(
         const sr       = ctx.sampleRate;
 
         // ── 1. YIN → 지정 건반 기준 cent ────────────────────────────
-        const winBuf  = applyHannWindow(buf);
-        const fYin    = detectPitchYIN(winBuf, sr, 26, 5000, 0.12);
+        const winBuf = applyHannWindow(buf);
+        // 고음은 fMax 확장(8000), threshold 완화(0.10) → 2배음 혼입 감소
+        const yinFmax      = isHigh ? 8000 : 5000;
+        const yinThreshold = isHigh ? 0.10 : 0.12;
+        const fYin    = detectPitchYIN(winBuf, sr, 26, yinFmax, yinThreshold);
         const yinCents = fYin > 0 ? yinFreqToCents(fYin, baseFreq) : null;
 
         // ── 2. Goertzel → 배음 기반 cent ─────────────────────────────
@@ -182,15 +198,17 @@ export function useCompositeTuner(
           : targetPartial(ki);
         const targetFreq = baseFreq * partial;
 
-        // 도미넌스 체크
+        // 도미넌스 체크 — 고음은 기준 완화 (배음이 많아 dominant 피크 약함)
         const gTarget = goertzel(buf, sr, targetFreq);
         const magLo   = goertzel(buf, sr, targetFreq * Math.pow(2, -1.5 / 12)).magnitude;
         const magHi   = goertzel(buf, sr, targetFreq * Math.pow(2,  1.5 / 12)).magnitude;
-        const signalOk = gTarget.magnitude > Math.max(magLo, magHi, 1e-9) * DOMINANCE_RATIO;
+        const domRatio = isHigh ? 1.1 : DOMINANCE_RATIO; // 고음: 도미넌스 기준 완화
+        const signalOk = gTarget.magnitude > Math.max(magLo, magHi, 1e-9) * domRatio;
 
-        // coarse scan
-        const step      = isLow ? COARSE_STEP_LOW : COARSE_STEP_MID;
-        const scanRange = Math.round(50 / step);
+        // coarse scan — 고음은 step 2¢, ±80¢ 범위
+        const step      = isLow ? COARSE_STEP_LOW : isHigh ? COARSE_STEP_HIGH : COARSE_STEP_MID;
+        const scanCents = isHigh ? SCAN_RANGE_CENTS_HIGH : SCAN_RANGE_CENTS;
+        const scanRange = Math.round(scanCents / step);
         let bestFreq = targetFreq;
         let bestMag  = -1;
         for (let i = -scanRange; i <= scanRange; i++) {
@@ -202,17 +220,34 @@ export function useCompositeTuner(
         const goertzelCents   = Math.round(1200 * Math.log2(measuredBaseHz / baseFreq) * 10) / 10;
 
         // ── 3. 교차검증 ──────────────────────────────────────────────
-        const threshold  = isLow ? CROSS_VALID_THRESHOLD_LOW : CROSS_VALID_THRESHOLD;
-        const crossValid = signalOk
-          && yinCents !== null
-          && Math.abs(yinCents - goertzelCents) <= threshold;
+        // 고음: YIN null이어도 Goertzel 단독으로 신뢰 (signalOk만 요구)
+        const threshold  = isLow
+          ? CROSS_VALID_THRESHOLD_LOW
+          : isHigh
+            ? CROSS_VALID_THRESHOLD_HIGH
+            : CROSS_VALID_THRESHOLD;
+
+        const crossValid = isHigh
+          ? (signalOk || yinCents !== null) // 고음: 둘 중 하나만 있으면 통과
+          : (signalOk && yinCents !== null && Math.abs(yinCents - goertzelCents) <= threshold);
 
         const effectiveYin = yinCents ?? goertzelCents;
-        const liveCents    = crossValid
+        // 고음: YIN이 있으면 YIN 우선, 없으면 Goertzel 단독
+        const liveCents = (crossValid && yinCents !== null)
           ? Math.round(((effectiveYin + goertzelCents) / 2) * 10) / 10
-          : goertzelCents; // YIN 없거나 교차 실패 → Goertzel 단독
+          : isHigh && signalOk
+            ? goertzelCents
+            : crossValid
+              ? Math.round(((effectiveYin + goertzelCents) / 2) * 10) / 10
+              : goertzelCents;
 
         // ── 4. 스트로브 안정화 ────────────────────────────────────────
+        // 고음: peakThreshold 낮추고 PEAK_RATIO 완화 (빠른 decay)
+        const peakThreshold = isHigh ? PEAK_THRESHOLD_HIGH : PEAK_THRESHOLD;
+        const peakRatio     = isHigh ? PEAK_RATIO_HIGH : PEAK_RATIO;
+        const stableDuration = isHigh ? STABLE_DURATION_MS_HIGH : STABLE_DURATION_MS;
+        const minSamples     = isHigh ? MIN_SAMPLES_HIGH : MIN_SAMPLES;
+
         if (rms > peakRmsRef.current * 1.5 && rms > 0.02) {
           peakRmsRef.current      = rms;
           captureStartRef.current = null;
@@ -221,7 +256,7 @@ export function useCompositeTuner(
           peakRmsRef.current = rms;
         }
 
-        const isStable = rms < peakRmsRef.current * PEAK_RATIO && peakRmsRef.current > 0.015;
+        const isStable = rms < peakRmsRef.current * peakRatio && peakRmsRef.current > peakThreshold;
 
         let finalCents: number | null = null;
         let isCapturing = false;
@@ -232,9 +267,9 @@ export function useCompositeTuner(
           captureBufferRef.current.push(liveCents);
           const elapsed = Date.now() - captureStartRef.current;
           isCapturing      = true;
-          captureProgress  = Math.min(elapsed / STABLE_DURATION_MS, 1);
+          captureProgress  = Math.min(elapsed / stableDuration, 1);
 
-          if (elapsed >= STABLE_DURATION_MS && captureBufferRef.current.length >= MIN_SAMPLES) {
+          if (elapsed >= stableDuration && captureBufferRef.current.length >= minSamples) {
             finalCents               = Math.round(median(captureBufferRef.current) * 10) / 10;
             captureStartRef.current  = null;
             captureBufferRef.current = [];
