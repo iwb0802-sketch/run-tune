@@ -188,7 +188,8 @@ export default function PrecisionPage() {
     ) {
       lastSavedKeyRef.current = pendingKeyIndex;
       confirmCurrent(currentPitch?.frequency ?? 0);
-      // 자동저장 완료 → 1.2초 후 다음 건반으로 자동 이동
+      // 자동저장 완료 → pending 즉시 리셋 후 1.2초 뒤 다음 건반 이동
+      session.resetPending();
       setTimeout(() => {
         if (seq.canNext) seq.next();
       }, 1200);
