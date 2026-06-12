@@ -239,10 +239,10 @@ export default function PrecisionPage() {
   const {
     sessions, activeSession, activeSessionId, createSession, measuredCount,
     pendingKeyIndex, centsHistory, currentLive, isCapturing,
-    medianCents, canConfirm, canAutoSave, shouldAutoSave,
+    medianCents, canConfirm, shouldAutoSave3, shouldAutoSave5,
     AUTO_SAVE_SAMPLES, MAX_SAMPLES,
     onPitchActive, onSilenceDetected, onStrobeSample,
-    confirmCurrent, clearAllMeasurements, resetPending,
+    saveCurrentToSession, confirmCurrent, clearAllMeasurements, resetPending,
     setActiveSessionId,
   } = session;
 
@@ -300,37 +300,32 @@ export default function PrecisionPage() {
   useEffect(() => { prevStrobeCentsRef.current = null; }, [targetKeyIndex]);
 
   // ─── 자동저장 트리거 ─────────────────────────────────────────────
-  // shouldAutoSave: 3회 정확히 도달 시
-  // canAutoSave: 5회 도달 시
-  const autoSavedKeyRef = useRef<Set<string>>(new Set());
+  // 3회, 5회 달성 시 saveCurrentToSession (패널 유지, resetPending 안 함)
+  const autoSavedRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (pendingKeyIndex === null) return;
-
-    const key3 = `${pendingKeyIndex}-3`;
-    const key5 = `${pendingKeyIndex}-5`;
+    const freq = PIANO_KEYS[pendingKeyIndex]?.freq ?? (currentPitch?.frequency ?? 0);
 
     // 3회 자동저장
-    if (shouldAutoSave && !autoSavedKeyRef.current.has(key3)) {
-      autoSavedKeyRef.current.add(key3);
-      const freq = PIANO_KEYS[pendingKeyIndex]?.freq ?? (currentPitch?.frequency ?? 0);
-      confirmCurrent(freq);
-      setTimeout(() => { if (seq.canNext) seq.next(); }, 800);
-      return;
+    const k3 = `${pendingKeyIndex}-3`;
+    if (shouldAutoSave3 && !autoSavedRef.current.has(k3)) {
+      autoSavedRef.current.add(k3);
+      saveCurrentToSession(freq);
+      // 패널 유지 — 4~5회 추가 측정 가능
     }
 
     // 5회 자동저장
-    if (canAutoSave && !autoSavedKeyRef.current.has(key5)) {
-      autoSavedKeyRef.current.add(key5);
-      const freq = PIANO_KEYS[pendingKeyIndex]?.freq ?? (currentPitch?.frequency ?? 0);
-      confirmCurrent(freq);
-      setTimeout(() => { if (seq.canNext) seq.next(); }, 800);
+    const k5 = `${pendingKeyIndex}-5`;
+    if (shouldAutoSave5 && !autoSavedRef.current.has(k5)) {
+      autoSavedRef.current.add(k5);
+      saveCurrentToSession(freq);
+      // 패널 유지
     }
-  }, [shouldAutoSave, canAutoSave, pendingKeyIndex]);
+  }, [shouldAutoSave3, shouldAutoSave5, pendingKeyIndex]);
 
-  // pendingKeyIndex 리셋 시 autoSaved ref 정리
   useEffect(() => {
-    if (pendingKeyIndex === null) autoSavedKeyRef.current = new Set();
+    if (pendingKeyIndex === null) autoSavedRef.current = new Set();
   }, [pendingKeyIndex]);
 
   const toggleListening = async () => {
@@ -622,29 +617,31 @@ export default function PrecisionPage() {
                     </div>
                   )}
 
-                  {/* 3회 자동저장 진행 표시 */}
-                  {shouldAutoSave && (
-                    <div className="flex items-center gap-1.5 text-xs text-in-tune bg-in-tune-soft px-3 py-2 rounded-lg mb-2">
-                      <span className="w-2 h-2 rounded-full bg-in-tune animate-pulse" />
-                      3회 달성 → 자동 저장 중...
+                  {/* 3회 자동저장 완료 배지 */}
+                  {centsHistory.length >= AUTO_SAVE_SAMPLES && (
+                    <div className={cn(
+                      "flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg mb-2",
+                      shouldAutoSave5
+                        ? "text-in-tune bg-in-tune-soft"
+                        : "text-precision bg-precision-soft"
+                    )}>
+                      <span className={cn(
+                        "w-2 h-2 rounded-full",
+                        shouldAutoSave5 ? "bg-in-tune animate-pulse" : "bg-precision"
+                      )} />
+                      {shouldAutoSave5
+                        ? `${MAX_SAMPLES}회 달성 → 자동 저장됨`
+                        : `저장됨 · 4~5회 더 측정하거나 다음 건반으로 이동하세요`
+                      }
                     </div>
                   )}
 
-                  {/* 5회 자동저장 진행 표시 */}
-                  {canAutoSave && !shouldAutoSave && (
-                    <div className="flex items-center gap-1.5 text-xs text-in-tune bg-in-tune-soft px-3 py-2 rounded-lg mb-2">
-                      <span className="w-2 h-2 rounded-full bg-in-tune animate-pulse" />
-                      {MAX_SAMPLES}회 달성 → 자동 저장 중...
-                    </div>
-                  )}
-
-                  {/* 확정 버튼 (4~5회 구간) */}
+                  {/* 확정 버튼 (3회 이상 구간: 저장 + 패널 유지) */}
                   {canConfirm && (
                     <button
                       onClick={() => {
                         const freq = PIANO_KEYS[pendingKeyIndex]?.freq ?? (currentPitch?.frequency ?? 0);
                         confirmCurrent(freq);
-                        setTimeout(() => { if (seq.canNext) seq.next(); }, 800);
                       }}
                       className="w-full py-3 rounded-xl text-sm font-bold transition-all active:scale-[0.97] bg-precision hover:bg-precision/90 text-white mb-1"
                     >

@@ -1,23 +1,24 @@
 /**
  * usePrecisionSession.ts — v2
  *
- * 수동모드와 동일한 파트별 엔진 방식.
+ * 자동저장 로직:
+ *  - 3회 달성 → saveCurrentToSession (패널 유지, 계속 측정 가능)
+ *  - 4~5회 구간 → 확정버튼 활성 → confirmCurrent (패널 유지)
+ *  - 5회 달성 → saveCurrentToSession (패널 유지)
+ *  - 다음 건반 이동 시 → resetPending
  *
  * 엔진 분기:
- *  - keyIndex 0~26 (1~27번):  useTargetedStrobe (배음 분석 → 기본음 절대 cent)
- *  - keyIndex 27~87 (28~88번): usePitchDetector  (YIN+HPS → 절대 cent)
- *
- * AUTO_SAVE_SAMPLES = 3 → 3회 도달 시 자동저장
- * MAX_SAMPLES       = 5 → 5회 도달 시 자동저장 (4~5회는 확정버튼으로 수동 확정 가능)
+ *  - keyIndex 0~26  (1~27번):  useTargetedStrobe
+ *  - keyIndex 27~87 (28~88번): usePitchDetector
  */
 
 import { useState, useCallback, useRef } from "react";
 
-/** 3회 달성 → 자동저장 */
+/** 3회 달성 → 자동저장 (패널 유지) */
 export const AUTO_SAVE_SAMPLES = 3;
-/** 5회 달성 → 자동저장 (4~5회 구간은 확정버튼 표시) */
+/** 5회 달성 → 자동저장 (최대) */
 export const MAX_SAMPLES = 5;
-/** @deprecated 하위 호환 — AUTO_SAVE_SAMPLES 사용 */
+/** @deprecated 하위 호환 */
 export const MIN_SAMPLES = AUTO_SAVE_SAMPLES;
 
 export interface PrecisionMeasurement {
@@ -57,13 +58,11 @@ export function usePrecisionSession() {
     const s = loadSessions(); return s[0]?.id ?? null;
   });
 
-  // 현재 측정 중인 건반 상태
   const [pendingKeyIndex, setPendingKeyIndex] = useState<number | null>(null);
   const [centsHistory, setCentsHistory] = useState<number[]>([]);
   const [currentLive, setCurrentLive] = useState<number | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
 
-  // Refs (클로저 회피)
   const pendingKeyRef = useRef<number | null>(null);
   const centsHistoryRef = useRef<number[]>([]);
   const currentRoundBufferRef = useRef<number[]>([]);
@@ -73,20 +72,20 @@ export function usePrecisionSession() {
   const activeSession = sessions.find(s => s.id === activeSessionId) ?? null;
   const measuredCount = activeSession ? Object.keys(activeSession.measurements).length : 0;
 
-  // 중앙값 (3회 이상이면 계산)
   const medianCents = centsHistory.length >= AUTO_SAVE_SAMPLES
     ? Math.round(calcMedian(centsHistory) * 10) / 10
     : null;
 
-  /** 3회 → 자동저장 트리거 */
-  const shouldAutoSave = centsHistory.length === AUTO_SAVE_SAMPLES;
-  /** 4~5회 → 확정버튼 활성 */
-  const canConfirm = centsHistory.length > AUTO_SAVE_SAMPLES && centsHistory.length <= MAX_SAMPLES;
-  /** 5회 → 자동저장 트리거 */
-  const canAutoSave = centsHistory.length >= MAX_SAMPLES;
+  /** 정확히 3회 달성 → 자동저장 트리거 */
+  const shouldAutoSave3 = centsHistory.length === AUTO_SAVE_SAMPLES;
+  /** 5회 달성 → 자동저장 트리거 */
+  const shouldAutoSave5 = centsHistory.length === MAX_SAMPLES;
+  /** 4~5회 구간 → 확정버튼 활성 */
+  const canConfirm = centsHistory.length >= AUTO_SAVE_SAMPLES && centsHistory.length <= MAX_SAMPLES;
 
-  // ─── 세션 관리 ────────────────────────────────────────────────────
+  // ─── 세션 관리 ───────────────────────────────────────────────────
 
+  /** pending 상태만 초기화 (건반 이동 시 호출) */
   const resetPending = useCallback(() => {
     pendingKeyRef.current = null;
     centsHistoryRef.current = [];
@@ -101,17 +100,15 @@ export function usePrecisionSession() {
   const createSession = useCallback((name?: string) => {
     const now = Date.now();
     const n = name || `정밀 ${new Date(now).toLocaleDateString("ko-KR")} ${new Date(now).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}`;
-    const session: PrecisionSession = {
+    const s: PrecisionSession = {
       id: now.toString(36) + Math.random().toString(36).slice(2, 6),
-      name: n,
-      createdAt: now,
-      measurements: {},
+      name: n, createdAt: now, measurements: {},
     };
-    setSessions(prev => { const u = [session, ...prev].slice(0, 10); saveSessions(u); return u; });
-    activeSessionIdRef.current = session.id;
-    setActiveSessionId(session.id);
+    setSessions(prev => { const u = [s, ...prev].slice(0, 10); saveSessions(u); return u; });
+    activeSessionIdRef.current = s.id;
+    setActiveSessionId(s.id);
     resetPending();
-    return session;
+    return s;
   }, [resetPending]);
 
   const clearAllMeasurements = useCallback(() => {
@@ -124,13 +121,41 @@ export function usePrecisionSession() {
     resetPending();
   }, [resetPending]);
 
-  // ─── 피치 수신 (수동모드의 handlePitchDetected와 동일 방식) ──────
-  //
-  // PitchDetector(중/고음) 콜백에서 호출.
-  // keyIndex가 목표와 같으면 버퍼에 누적.
+  // ─── 저장만 (패널 유지) ───────────────────────────────────────────
+  /** 현재 centsHistory를 세션에 저장. resetPending 호출 안 함 → 패널 유지. */
+  const saveCurrentToSession = useCallback((frequency: number) => {
+    const ki = pendingKeyRef.current;
+    const sid = activeSessionIdRef.current;
+    const history = centsHistoryRef.current;
+    if (!sid || ki === null || history.length < AUTO_SAVE_SAMPLES) return;
+
+    const median = Math.round(calcMedian(history) * 10) / 10;
+    const measurement: PrecisionMeasurement = {
+      keyIndex: ki,
+      centsHistory: [...history],
+      medianCents: median,
+      frequency,
+      measuredAt: Date.now(),
+    };
+    setSessions(prev => {
+      const u = prev.map(s => s.id === sid
+        ? { ...s, measurements: { ...s.measurements, [ki]: measurement } }
+        : s);
+      saveSessions(u); return u;
+    });
+    // pendingKeyRef/centsHistoryRef 유지 → 추가 측정 가능
+  }, []);
+
+  // ─── 저장 + 패널 유지 (수동 확정) ───────────────────────────────
+  /** 확정버튼 누를 때: 저장하고 패널은 유지. resetPending은 건반 이동 시. */
+  const confirmCurrent = useCallback((frequency: number) => {
+    saveCurrentToSession(frequency);
+    // 패널 유지 — resetPending 호출 안 함
+  }, [saveCurrentToSession]);
+
+  // ─── 피치 수신 ───────────────────────────────────────────────────
   const onPitchActive = useCallback((keyIndex: number, cents: number) => {
     if (pendingKeyRef.current !== keyIndex) {
-      // 새 건반 전환 → 이전 데이터 초기화
       pendingKeyRef.current = keyIndex;
       centsHistoryRef.current = [];
       currentRoundBufferRef.current = [cents];
@@ -141,7 +166,7 @@ export function usePrecisionSession() {
       setIsCapturing(true);
       return;
     }
-    // 같은 건반 → 현재 타건 버퍼에 추가
+    if (centsHistoryRef.current.length >= MAX_SAMPLES) return; // 이미 최대
     currentRoundBufferRef.current.push(cents);
     isRoundActiveRef.current = true;
     const live = Math.round(calcMedian(currentRoundBufferRef.current) * 10) / 10;
@@ -149,7 +174,6 @@ export function usePrecisionSession() {
     setIsCapturing(true);
   }, []);
 
-  // 무음 감지 → 현재 타건 버퍼를 1회 확정치로 수집
   const onSilenceDetected = useCallback(() => {
     if (!isRoundActiveRef.current) return;
     if (currentRoundBufferRef.current.length === 0) return;
@@ -160,64 +184,29 @@ export function usePrecisionSession() {
       setCurrentLive(null);
       return;
     }
-
     const roundVal = Math.round(calcMedian(currentRoundBufferRef.current) * 10) / 10;
     centsHistoryRef.current = [...centsHistoryRef.current, roundVal];
     currentRoundBufferRef.current = [];
     isRoundActiveRef.current = false;
-
     setCentsHistory([...centsHistoryRef.current]);
     setIsCapturing(false);
     setCurrentLive(null);
   }, []);
 
-  // ─── 스트로브 확정값 수신 (저음 구간) ────────────────────────────
-  //
-  // useTargetedStrobe의 strobeCents가 새 값이면 그대로 1회 수집.
-  // 저음은 배음 분석을 통해 이미 기본음 기준 절대 cent로 반환됨.
   const onStrobeSample = useCallback((keyIndex: number, cents: number) => {
     if (pendingKeyRef.current !== keyIndex) {
-      // 새 건반
       pendingKeyRef.current = keyIndex;
       centsHistoryRef.current = [];
       setPendingKeyIndex(keyIndex);
       setCentsHistory([]);
     }
     if (centsHistoryRef.current.length >= MAX_SAMPLES) return;
-
     centsHistoryRef.current = [...centsHistoryRef.current, Math.round(cents * 10) / 10];
     setCentsHistory([...centsHistoryRef.current]);
     setCurrentLive(null);
     setIsCapturing(false);
   }, []);
 
-  // ─── 확정 저장 ───────────────────────────────────────────────────
-  const confirmCurrent = useCallback((frequency: number) => {
-    const ki = pendingKeyRef.current;
-    const sid = activeSessionIdRef.current;
-    const history = centsHistoryRef.current;
-    if (!sid || ki === null || history.length < MIN_SAMPLES) return;
-
-    const median = Math.round(calcMedian(history) * 10) / 10;
-    const measurement: PrecisionMeasurement = {
-      keyIndex: ki,
-      centsHistory: [...history],
-      medianCents: median,
-      frequency,
-      measuredAt: Date.now(),
-    };
-
-    setSessions(prev => {
-      const u = prev.map(s => s.id === sid
-        ? { ...s, measurements: { ...s.measurements, [ki]: measurement } }
-        : s);
-      saveSessions(u); return u;
-    });
-
-    resetPending();
-  }, [resetPending]);
-
-  // activeSessionId 변경 시 ref 동기화
   const setActiveSessionIdWithRef = useCallback((id: string) => {
     activeSessionIdRef.current = id;
     setActiveSessionId(id);
@@ -232,23 +221,22 @@ export function usePrecisionSession() {
     clearAllMeasurements,
     resetPending,
 
-    // 현재 측정 상태
     pendingKeyIndex,
     centsHistory,
     currentLive,
     isCapturing,
     medianCents,
     canConfirm,
-    canAutoSave,
-    shouldAutoSave,
+    shouldAutoSave3,
+    shouldAutoSave5,
     AUTO_SAVE_SAMPLES,
     MIN_SAMPLES,
     MAX_SAMPLES,
 
-    // 이벤트 핸들러
     onPitchActive,
     onSilenceDetected,
     onStrobeSample,
+    saveCurrentToSession,
     confirmCurrent,
 
     measuredCount,
