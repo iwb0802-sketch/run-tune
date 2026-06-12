@@ -2,21 +2,23 @@
  * usePrecisionSession.ts — v2
  *
  * 수동모드와 동일한 파트별 엔진 방식.
- * 복합 auto+strobe 블렌딩 제거 → 3~5회 수집 후 중앙값 하나로 확정.
  *
  * 엔진 분기:
  *  - keyIndex 0~26 (1~27번):  useTargetedStrobe (배음 분석 → 기본음 절대 cent)
  *  - keyIndex 27~87 (28~88번): usePitchDetector  (YIN+HPS → 절대 cent)
  *
- * MIN_SAMPLES = 3, MAX_SAMPLES = 5
- * 3회 이상 수집되면 중앙값 표시 + 확정 가능
- * 5회 도달 시 자동 확정
+ * AUTO_SAVE_SAMPLES = 3 → 3회 도달 시 자동저장
+ * MAX_SAMPLES       = 5 → 5회 도달 시 자동저장 (4~5회는 확정버튼으로 수동 확정 가능)
  */
 
 import { useState, useCallback, useRef } from "react";
 
-export const MIN_SAMPLES = 3;
+/** 3회 달성 → 자동저장 */
+export const AUTO_SAVE_SAMPLES = 3;
+/** 5회 달성 → 자동저장 (4~5회 구간은 확정버튼 표시) */
 export const MAX_SAMPLES = 5;
+/** @deprecated 하위 호환 — AUTO_SAVE_SAMPLES 사용 */
+export const MIN_SAMPLES = AUTO_SAVE_SAMPLES;
 
 export interface PrecisionMeasurement {
   keyIndex: number;
@@ -71,12 +73,16 @@ export function usePrecisionSession() {
   const activeSession = sessions.find(s => s.id === activeSessionId) ?? null;
   const measuredCount = activeSession ? Object.keys(activeSession.measurements).length : 0;
 
-  // 중앙값 (3회 이상이면 표시)
-  const medianCents = centsHistory.length >= MIN_SAMPLES
+  // 중앙값 (3회 이상이면 계산)
+  const medianCents = centsHistory.length >= AUTO_SAVE_SAMPLES
     ? Math.round(calcMedian(centsHistory) * 10) / 10
     : null;
 
-  const canConfirm = medianCents !== null;
+  /** 3회 → 자동저장 트리거 */
+  const shouldAutoSave = centsHistory.length === AUTO_SAVE_SAMPLES;
+  /** 4~5회 → 확정버튼 활성 */
+  const canConfirm = centsHistory.length > AUTO_SAVE_SAMPLES && centsHistory.length <= MAX_SAMPLES;
+  /** 5회 → 자동저장 트리거 */
   const canAutoSave = centsHistory.length >= MAX_SAMPLES;
 
   // ─── 세션 관리 ────────────────────────────────────────────────────
@@ -234,6 +240,8 @@ export function usePrecisionSession() {
     medianCents,
     canConfirm,
     canAutoSave,
+    shouldAutoSave,
+    AUTO_SAVE_SAMPLES,
     MIN_SAMPLES,
     MAX_SAMPLES,
 

@@ -1,14 +1,14 @@
 /**
  * PrecisionPage.tsx — v2
  *
- * 수동모드와 동일한 파트별 엔진 분기.
- * 복합 auto+strobe 블렌딩 제거.
- *
  * 엔진 분기:
- *  - keyIndex 0~26  (1~27번):  useTargetedStrobe (저음 배음 분석)
+ *  - keyIndex 0~26  (1~27번):  useTargetedStrobe
  *  - keyIndex 27~87 (28~88번): usePitchDetector
  *
- * 측정: 3~5회 수집 → 중앙값 하나로 확정
+ * 자동저장 로직:
+ *  - 3회 달성 → 즉시 자동저장 + 다음 건반
+ *  - 4~5회 구간 → 확정버튼 활성 (더 측정하고 싶으면 수동 확정)
+ *  - 5회 달성 → 자동저장
  */
 
 import { useState, useCallback, useRef, useEffect } from "react";
@@ -26,7 +26,6 @@ import { useManualSequence } from "@/pages/manual/useManualSequence";
 import SectionTabs from "@/pages/manual/SectionTabs";
 import TargetNoteBar from "@/pages/manual/TargetNoteBar";
 
-/** keyIndex 0~26 → 저음 (1~27번) → useTargetedStrobe */
 function isLowRange(keyIndex: number): boolean {
   return keyIndex <= 26;
 }
@@ -35,12 +34,125 @@ function isInRange(keyIndex: number, cents: number): boolean {
   return cents >= LOWER_ABS[keyIndex] && cents <= UPPER_ABS[keyIndex];
 }
 
-/** 최근 확정 목록 */
+// ─── 측정내역서 패널 ───────────────────────────────────────────────
+function MeasurementSummary({ measurements }: { measurements: Record<number, any> }) {
+  const list = Object.values(measurements).sort((a, b) => a.keyIndex - b.keyIndex);
+  if (!list.length) return null;
+
+  const passCount = list.filter(m => isInRange(m.keyIndex, m.medianCents)).length;
+  const avgDeviation = list.reduce((sum, m) => sum + Math.abs(m.medianCents), 0) / list.length;
+  const mean = list.reduce((sum, m) => sum + m.medianCents, 0) / list.length;
+
+  return (
+    <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+        측정 내역서
+      </h3>
+
+      {/* 요약 통계 */}
+      <div className="grid grid-cols-3 gap-2 mb-3">
+        <div className="bg-muted/50 rounded-lg p-2 text-center">
+          <div
+            className="text-lg font-extrabold text-precision"
+            style={{ fontFamily: "'JetBrains Mono', monospace" }}
+          >
+            {passCount}/{list.length}
+          </div>
+          <div className="text-[10px] text-muted-foreground mt-0.5">허용범위 통과</div>
+        </div>
+        <div className="bg-muted/50 rounded-lg p-2 text-center">
+          <div
+            className="text-lg font-extrabold text-foreground"
+            style={{ fontFamily: "'JetBrains Mono', monospace" }}
+          >
+            {avgDeviation.toFixed(1)}¢
+          </div>
+          <div className="text-[10px] text-muted-foreground mt-0.5">평균 편차</div>
+        </div>
+        <div className="bg-muted/50 rounded-lg p-2 text-center">
+          <div
+            className={cn(
+              "text-lg font-extrabold",
+              mean > 0 ? "text-warn" : mean < 0 ? "text-precision" : "text-in-tune"
+            )}
+            style={{ fontFamily: "'JetBrains Mono', monospace" }}
+          >
+            {mean > 0 ? "+" : ""}{mean.toFixed(1)}¢
+          </div>
+          <div className="text-[10px] text-muted-foreground mt-0.5">평균치</div>
+        </div>
+      </div>
+
+      {/* 건반별 목록 */}
+      <div className="max-h-56 overflow-y-auto rounded-lg border border-border/60">
+        <table className="w-full text-xs">
+          <thead className="sticky top-0 bg-muted/80 backdrop-blur-sm">
+            <tr>
+              <th className="text-left px-2 py-1.5 text-muted-foreground font-semibold">건반</th>
+              <th className="text-right px-2 py-1.5 text-muted-foreground font-semibold">측정값</th>
+              <th className="text-right px-2 py-1.5 text-muted-foreground font-semibold">회차</th>
+              <th className="text-right px-2 py-1.5 text-muted-foreground font-semibold">판정</th>
+            </tr>
+          </thead>
+          <tbody>
+            {list.map((m, idx) => {
+              const key = PIANO_KEYS[m.keyIndex];
+              const inR = isInRange(m.keyIndex, m.medianCents);
+              return (
+                <tr
+                  key={m.keyIndex}
+                  className={cn(
+                    "border-b border-border/40 last:border-0",
+                    idx % 2 === 0 ? "bg-transparent" : "bg-muted/20"
+                  )}
+                >
+                  <td className="px-2 py-1.5">
+                    <span
+                      className="font-bold text-foreground/85"
+                      style={{ fontFamily: "'JetBrains Mono', monospace" }}
+                    >
+                      {key.noteName}{key.octave}
+                    </span>
+                    <span className="text-muted-foreground/60 ml-1">#{m.keyIndex + 1}</span>
+                  </td>
+                  <td
+                    className={cn(
+                      "px-2 py-1.5 text-right font-bold tabular-nums",
+                      inR ? "text-precision" : "text-off"
+                    )}
+                    style={{ fontFamily: "'JetBrains Mono', monospace" }}
+                  >
+                    {m.medianCents > 0 ? "+" : ""}{m.medianCents.toFixed(1)}¢
+                  </td>
+                  <td className="px-2 py-1.5 text-right text-muted-foreground/70">
+                    {m.centsHistory.length}회
+                  </td>
+                  <td className="px-2 py-1.5 text-right">
+                    <span className={cn(
+                      "px-1.5 py-0.5 rounded-full text-[10px] font-bold",
+                      inR
+                        ? "bg-precision/15 text-precision"
+                        : "bg-off/15 text-off"
+                    )}>
+                      {inR ? "OK" : "NG"}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ─── 최근 확정 목록 ────────────────────────────────────────────────
 function PrecisionResultList({ measurements }: { measurements: Record<number, any> }) {
   const [expandedKey, setExpandedKey] = useState<number | null>(null);
   const sorted = Object.values(measurements)
     .sort((a, b) => b.measuredAt - a.measuredAt)
-    .slice(0, 20);
+    .slice(0, 10);
 
   if (!sorted.length) return null;
 
@@ -49,7 +161,7 @@ function PrecisionResultList({ measurements }: { measurements: Record<number, an
       <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
         최근 확정
       </h3>
-      <div className="space-y-1 max-h-64 overflow-y-auto">
+      <div className="space-y-1 max-h-52 overflow-y-auto">
         {sorted.map((m, idx) => {
           const key = PIANO_KEYS[m.keyIndex];
           const inR = isInRange(m.keyIndex, m.medianCents);
@@ -69,8 +181,8 @@ function PrecisionResultList({ measurements }: { measurements: Record<number, an
                 >
                   {key.noteName}{key.octave}
                 </span>
-                <span className="text-muted-foreground/80">건반 {m.keyIndex + 1}</span>
-                <span className="text-muted-foreground/60">{m.centsHistory.length}회</span>
+                <span className="text-muted-foreground/60 flex-1">#{m.keyIndex + 1}</span>
+                <span className="text-muted-foreground/60 mr-2">{m.centsHistory.length}회</span>
                 <div className="flex items-center gap-1">
                   <span
                     className={cn("font-bold tabular-nums", inR ? "text-precision" : "text-off")}
@@ -78,17 +190,20 @@ function PrecisionResultList({ measurements }: { measurements: Record<number, an
                   >
                     {m.medianCents > 0 ? "+" : ""}{m.medianCents.toFixed(1)}¢
                   </span>
-                  <span className="text-muted-foreground/60">{isExpanded ? "▲" : "▼"}</span>
+                  <span className="text-muted-foreground/50 text-[10px]">{isExpanded ? "▲" : "▼"}</span>
                 </div>
               </div>
               {isExpanded && (
-                <div className="mx-2 mb-2 bg-muted/50 rounded-lg p-2 border border-border/60">
+                <div className="mx-2 mb-1 bg-muted/40 rounded-lg p-2 border border-border/50">
                   <table className="w-full text-xs">
                     <tbody>
                       {m.centsHistory.map((c: number, i: number) => (
-                        <tr key={i} className="border-b border-border/60">
+                        <tr key={i} className="border-b border-border/40 last:border-0">
                           <td className="py-1 text-primary">{i + 1}회</td>
-                          <td className="py-1 text-right font-mono font-semibold text-foreground/85">
+                          <td
+                            className="py-1 text-right font-mono font-semibold text-foreground/85"
+                            style={{ fontFamily: "'JetBrains Mono', monospace" }}
+                          >
                             {c > 0 ? "+" : ""}{c.toFixed(1)}¢
                           </td>
                         </tr>
@@ -97,7 +212,7 @@ function PrecisionResultList({ measurements }: { measurements: Record<number, an
                         <td className="py-1.5 text-precision font-bold">중앙값</td>
                         <td
                           className="py-1.5 text-right font-mono font-bold"
-                          style={{ color: inR ? "#7c3aed" : "#dc2626" }}
+                          style={{ color: inR ? "#7c3aed" : "#dc2626", fontFamily: "'JetBrains Mono', monospace" }}
                         >
                           {m.medianCents > 0 ? "+" : ""}{m.medianCents.toFixed(1)}¢
                         </td>
@@ -114,6 +229,7 @@ function PrecisionResultList({ measurements }: { measurements: Record<number, an
   );
 }
 
+// ─── 메인 페이지 ───────────────────────────────────────────────────
 export default function PrecisionPage() {
   const { user } = useAuth();
   const { isPro } = useUserRole(user?.id);
@@ -121,12 +237,13 @@ export default function PrecisionPage() {
   const seq = useManualSequence();
   const session = usePrecisionSession();
   const {
-    activeSession, activeSessionId, createSession, measuredCount,
+    sessions, activeSession, activeSessionId, createSession, measuredCount,
     pendingKeyIndex, centsHistory, currentLive, isCapturing,
-    medianCents, canConfirm, canAutoSave,
-    MIN_SAMPLES, MAX_SAMPLES,
+    medianCents, canConfirm, canAutoSave, shouldAutoSave,
+    AUTO_SAVE_SAMPLES, MAX_SAMPLES,
     onPitchActive, onSilenceDetected, onStrobeSample,
     confirmCurrent, clearAllMeasurements, resetPending,
+    setActiveSessionId,
   } = session;
 
   const targetKeyIndex = seq.targetKeyIndex;
@@ -135,13 +252,13 @@ export default function PrecisionPage() {
   const [showGuide, setShowGuide] = useState(true);
   const [userName, setUserName] = useState("");
   const [showSessionList, setShowSessionList] = useState(false);
+  const [summaryView, setSummaryView] = useState<"recent" | "all">("recent");
 
   useWakeLock(true);
 
   const targetKeyRef = useRef(targetKeyIndex);
   useEffect(() => {
     targetKeyRef.current = targetKeyIndex;
-    // 건반 이동 시 pending 초기화
     resetPending();
   }, [targetKeyIndex, resetPending]);
 
@@ -151,17 +268,11 @@ export default function PrecisionPage() {
   const handlePitch = useCallback((result: any) => {
     if (result.confidence < 0.55) return;
     const target = targetKeyRef.current;
-    if (isLowRange(target)) return; // 저음 구간은 무시
-
-    // 목표 건반 ±3 범위만 수용
+    if (isLowRange(target)) return;
     if (Math.abs(result.keyIndex - target) > 3) return;
-
     onPitchActive(target, result.cents);
-
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-    silenceTimerRef.current = setTimeout(() => {
-      onSilenceDetected();
-    }, 500);
+    silenceTimerRef.current = setTimeout(() => onSilenceDetected(), 500);
   }, [onPitchActive, onSilenceDetected]);
 
   const { isListening, currentPitch, startListening, stopListening, error, stream, audioContext } =
@@ -176,7 +287,6 @@ export default function PrecisionPage() {
     { stableDurationMs: 1000, fftSize: 4096 }
   );
 
-  // strobeCents 새 확정값 → onStrobeSample
   const prevStrobeCentsRef = useRef<number | null>(null);
   useEffect(() => {
     const c = strobe.strobeCents;
@@ -187,28 +297,41 @@ export default function PrecisionPage() {
     onStrobeSample(targetKeyRef.current, c);
   }, [strobe.strobeCents, onStrobeSample]);
 
-  // 건반 이동 시 strobe prev 초기화
-  useEffect(() => {
-    prevStrobeCentsRef.current = null;
-  }, [targetKeyIndex]);
+  useEffect(() => { prevStrobeCentsRef.current = null; }, [targetKeyIndex]);
 
-  // ─── 자동 확정 (5회 도달) ────────────────────────────────────────
-  const autoSavedKeyRef = useRef<number | null>(null);
+  // ─── 자동저장 트리거 ─────────────────────────────────────────────
+  // shouldAutoSave: 3회 정확히 도달 시
+  // canAutoSave: 5회 도달 시
+  const autoSavedKeyRef = useRef<Set<string>>(new Set());
+
   useEffect(() => {
-    if (
-      canAutoSave &&
-      pendingKeyIndex !== null &&
-      autoSavedKeyRef.current !== pendingKeyIndex
-    ) {
-      autoSavedKeyRef.current = pendingKeyIndex;
+    if (pendingKeyIndex === null) return;
+
+    const key3 = `${pendingKeyIndex}-3`;
+    const key5 = `${pendingKeyIndex}-5`;
+
+    // 3회 자동저장
+    if (shouldAutoSave && !autoSavedKeyRef.current.has(key3)) {
+      autoSavedKeyRef.current.add(key3);
       const freq = PIANO_KEYS[pendingKeyIndex]?.freq ?? (currentPitch?.frequency ?? 0);
       confirmCurrent(freq);
-      setTimeout(() => {
-        if (seq.canNext) seq.next();
-      }, 1000);
+      setTimeout(() => { if (seq.canNext) seq.next(); }, 800);
+      return;
     }
-    if (pendingKeyIndex === null) autoSavedKeyRef.current = null;
-  }, [canAutoSave, pendingKeyIndex]);
+
+    // 5회 자동저장
+    if (canAutoSave && !autoSavedKeyRef.current.has(key5)) {
+      autoSavedKeyRef.current.add(key5);
+      const freq = PIANO_KEYS[pendingKeyIndex]?.freq ?? (currentPitch?.frequency ?? 0);
+      confirmCurrent(freq);
+      setTimeout(() => { if (seq.canNext) seq.next(); }, 800);
+    }
+  }, [shouldAutoSave, canAutoSave, pendingKeyIndex]);
+
+  // pendingKeyIndex 리셋 시 autoSaved ref 정리
+  useEffect(() => {
+    if (pendingKeyIndex === null) autoSavedKeyRef.current = new Set();
+  }, [pendingKeyIndex]);
 
   const toggleListening = async () => {
     if (!activeSessionId) createSession();
@@ -216,8 +339,10 @@ export default function PrecisionPage() {
     else await startListening();
   };
 
+  // 차트 데이터 — sessions state 직접 참조 (확정 즉시 반영)
+  const currentMeasurements = sessions.find(s => s.id === activeSessionId)?.measurements ?? {};
   const chartData = PIANO_KEYS.map((key, i) => {
-    const m = activeSession?.measurements[i];
+    const m = currentMeasurements[i];
     return {
       keyNumber: key.keyNumber, keyIndex: i,
       noteName: key.noteName, octave: key.octave,
@@ -227,17 +352,13 @@ export default function PrecisionPage() {
     };
   });
 
-  const targetKey = PIANO_KEYS[targetKeyIndex];
-
-  // 현재 측정 중인 건반의 기존 기록
-  const existingMeasurement = pendingKeyIndex !== null
-    ? activeSession?.measurements[pendingKeyIndex]
-    : null;
-
-  // 표시할 실시간 값 (저음: strobe liveCents, 중고음: currentPitch)
   const liveDisplayCents = isLow
     ? (strobe.liveCents ?? null)
     : (currentLive ?? (currentPitch?.cents ?? null));
+
+  const existingMeasurement = pendingKeyIndex !== null
+    ? currentMeasurements[pendingKeyIndex]
+    : null;
 
   return (
     <div
@@ -256,8 +377,8 @@ export default function PrecisionPage() {
             <h1 className="text-base font-bold text-foreground leading-tight">정밀 측정 모드</h1>
             <p className="text-xs text-muted-foreground/80">
               {isLow
-                ? `저음 스트로브 (1~27번) · 배음 ${strobe.partial ?? "?"}배 · ${MIN_SAMPLES}~${MAX_SAMPLES}회 중앙값`
-                : `피치 감지 · ${MIN_SAMPLES}~${MAX_SAMPLES}회 중앙값`}
+                ? `저음 스트로브 · 배음 ${strobe.partial ?? "?"}배 · 3회 자동저장`
+                : `피치 감지 · 3회 자동저장`}
             </p>
           </div>
         </div>
@@ -278,7 +399,6 @@ export default function PrecisionPage() {
       <div className="px-4 pt-3">
         <SectionTabs section={seq.section} onChange={seq.setSection} />
       </div>
-      {/* 건반 순서 네비게이션 */}
       <div className="px-4 pt-2 pb-1">
         <TargetNoteBar
           keyIndex={targetKeyIndex}
@@ -351,7 +471,7 @@ export default function PrecisionPage() {
             </div>
           </div>
 
-          {/* 오른쪽 컬럼 — 모바일: order-2 (마이크 바로 아래), 데스크탑: 오른쪽 */}
+          {/* 오른쪽 컬럼 */}
           <div className="flex flex-col gap-4 order-2 lg:col-start-2 lg:row-span-2">
 
             {/* 현재 측정 패널 */}
@@ -407,7 +527,7 @@ export default function PrecisionPage() {
                     </div>
                   )}
 
-                  {/* 수집 내역 */}
+                  {/* 수집 내역 테이블 */}
                   {centsHistory.length > 0 && (
                     <div className="border border-border/60 rounded-xl overflow-hidden mb-3">
                       <table className="w-full text-xs">
@@ -419,10 +539,10 @@ export default function PrecisionPage() {
                         </thead>
                         <tbody>
                           {centsHistory.map((c, i) => (
-                            <tr key={i} className="border-b border-border/40">
+                            <tr key={i} className="border-b border-border/40 last:border-0">
                               <td className="px-3 py-1.5 text-primary font-medium">{i + 1}회</td>
                               <td
-                                className="px-3 py-1.5 text-right font-mono font-bold text-foreground"
+                                className="px-3 py-1.5 text-right font-bold text-foreground tabular-nums"
                                 style={{ fontFamily: "'JetBrains Mono', monospace" }}
                               >
                                 {c > 0 ? "+" : ""}{c.toFixed(1)}¢
@@ -431,12 +551,12 @@ export default function PrecisionPage() {
                           ))}
                           {/* 진행 중 실시간 */}
                           {isCapturing && currentLive !== null && !isLowRange(pendingKeyIndex) && (
-                            <tr className="bg-yellow-50 border-b border-border/40">
+                            <tr className="bg-yellow-50/60 border-b border-border/40">
                               <td className="px-3 py-1.5 text-yellow-600 font-medium">
-                                <span className="animate-pulse">{centsHistory.length + 1}회 진행 중...</span>
+                                <span className="animate-pulse">{centsHistory.length + 1}회 진행...</span>
                               </td>
                               <td
-                                className="px-3 py-1.5 text-right font-mono text-yellow-600"
+                                className="px-3 py-1.5 text-right font-mono text-yellow-600 tabular-nums"
                                 style={{ fontFamily: "'JetBrains Mono', monospace" }}
                               >
                                 {currentLive > 0 ? "+" : ""}{currentLive.toFixed(1)}¢
@@ -453,7 +573,7 @@ export default function PrecisionPage() {
                     <div className="flex items-center justify-between px-3 py-2.5 bg-muted/40 rounded-xl border border-border/60 mb-3 text-xs">
                       <span className="text-muted-foreground">실시간</span>
                       <span
-                        className="font-mono font-bold text-foreground/80"
+                        className="font-mono font-bold text-foreground/80 tabular-nums"
                         style={{ fontFamily: "'JetBrains Mono', monospace" }}
                       >
                         {liveDisplayCents > 0 ? "+" : ""}{liveDisplayCents.toFixed(1)}¢
@@ -480,7 +600,7 @@ export default function PrecisionPage() {
                         </span>
                       </div>
                       <div
-                        className="text-2xl font-extrabold"
+                        className="text-2xl font-extrabold tabular-nums"
                         style={{
                           color: pendingKeyIndex !== null && isInRange(pendingKeyIndex, medianCents)
                             ? "#7c3aed" : "#dc2626",
@@ -493,48 +613,49 @@ export default function PrecisionPage() {
                   )}
 
                   {/* 진행 안내 */}
-                  {centsHistory.length < MIN_SAMPLES && !isCapturing && (
+                  {centsHistory.length < AUTO_SAVE_SAMPLES && !isCapturing && (
                     <div className="text-xs text-muted-foreground/70 text-center py-1 mb-2">
                       {isLowRange(pendingKeyIndex)
-                        ? `건반을 치면 스트로브가 자동 수집합니다 (${MIN_SAMPLES - centsHistory.length}회 더 필요)`
-                        : `건반을 치고 떼세요 (${MIN_SAMPLES - centsHistory.length}회 더 필요)`
+                        ? `건반을 치면 스트로브가 자동 수집 (${AUTO_SAVE_SAMPLES - centsHistory.length}회 더 필요)`
+                        : `건반을 치고 떼세요 (${AUTO_SAVE_SAMPLES - centsHistory.length}회 더 필요)`
                       }
                     </div>
                   )}
 
-                  {canAutoSave && (
+                  {/* 3회 자동저장 진행 표시 */}
+                  {shouldAutoSave && (
+                    <div className="flex items-center gap-1.5 text-xs text-in-tune bg-in-tune-soft px-3 py-2 rounded-lg mb-2">
+                      <span className="w-2 h-2 rounded-full bg-in-tune animate-pulse" />
+                      3회 달성 → 자동 저장 중...
+                    </div>
+                  )}
+
+                  {/* 5회 자동저장 진행 표시 */}
+                  {canAutoSave && !shouldAutoSave && (
                     <div className="flex items-center gap-1.5 text-xs text-in-tune bg-in-tune-soft px-3 py-2 rounded-lg mb-2">
                       <span className="w-2 h-2 rounded-full bg-in-tune animate-pulse" />
                       {MAX_SAMPLES}회 달성 → 자동 저장 중...
                     </div>
                   )}
 
-                  {/* 확정 버튼 */}
-                  <button
-                    onClick={() => {
-                      const freq = PIANO_KEYS[pendingKeyIndex]?.freq ?? (currentPitch?.frequency ?? 0);
-                      confirmCurrent(freq);
-                      setTimeout(() => { if (seq.canNext) seq.next(); }, 800);
-                    }}
-                    disabled={!canConfirm}
-                    className={cn(
-                      "w-full py-3 rounded-xl text-sm font-bold transition-all active:scale-[0.97]",
-                      canConfirm
-                        ? "bg-precision hover:bg-precision/90 text-white"
-                        : "bg-muted text-muted-foreground/60 cursor-not-allowed"
-                    )}
-                  >
-                    {canConfirm
-                      ? `✓ ${medianCents! > 0 ? "+" : ""}${medianCents!.toFixed(1)}¢ 확정 (${centsHistory.length}회)`
-                      : `${MIN_SAMPLES - centsHistory.length}회 더 필요`
-                    }
-                  </button>
+                  {/* 확정 버튼 (4~5회 구간) */}
+                  {canConfirm && (
+                    <button
+                      onClick={() => {
+                        const freq = PIANO_KEYS[pendingKeyIndex]?.freq ?? (currentPitch?.frequency ?? 0);
+                        confirmCurrent(freq);
+                        setTimeout(() => { if (seq.canNext) seq.next(); }, 800);
+                      }}
+                      className="w-full py-3 rounded-xl text-sm font-bold transition-all active:scale-[0.97] bg-precision hover:bg-precision/90 text-white mb-1"
+                    >
+                      ✓ {medianCents! > 0 ? "+" : ""}{medianCents!.toFixed(1)}¢ 확정 ({centsHistory.length}회)
+                    </button>
+                  )}
 
-                  {/* 기존 기록 안내 */}
+                  {/* 기존 기록 덮어쓰기 안내 */}
                   {existingMeasurement && (
-                    <p className="text-xs text-muted-foreground/70 text-center mt-2">
-                      기존: {existingMeasurement.medianCents > 0 ? "+" : ""}{existingMeasurement.medianCents.toFixed(1)}¢ ({existingMeasurement.centsHistory.length}회)
-                      → 덮어쓰기
+                    <p className="text-xs text-muted-foreground/70 text-center mt-1">
+                      기존: {existingMeasurement.medianCents > 0 ? "+" : ""}{existingMeasurement.medianCents.toFixed(1)}¢ ({existingMeasurement.centsHistory.length}회) → 덮어쓰기
                     </p>
                   )}
                 </>
@@ -545,17 +666,45 @@ export default function PrecisionPage() {
                   <p className="text-xs mt-2 text-muted-foreground/60">
                     {isLow ? "저음: 스트로브 자동 수집" : "중/고음: 건반을 치고 떼세요"}
                   </p>
+                  <p className="text-xs mt-1 text-muted-foreground/50">
+                    3회 → 자동저장 | 4~5회 → 확정버튼
+                  </p>
                 </div>
               )}
             </div>
 
-            {/* 최근 확정 */}
+            {/* 측정 내역서 / 최근 확정 탭 */}
             {measuredCount > 0 && (
-              <PrecisionResultList measurements={activeSession?.measurements ?? {}} />
+              <div>
+                <div className="flex gap-1 mb-2">
+                  <button
+                    onClick={() => setSummaryView("recent")}
+                    className={cn(
+                      "flex-1 py-1.5 rounded-lg text-xs font-semibold transition-colors",
+                      summaryView === "recent"
+                        ? "bg-precision text-white"
+                        : "bg-muted text-muted-foreground hover:bg-muted/80"
+                    )}
+                  >최근 확정</button>
+                  <button
+                    onClick={() => setSummaryView("all")}
+                    className={cn(
+                      "flex-1 py-1.5 rounded-lg text-xs font-semibold transition-colors",
+                      summaryView === "all"
+                        ? "bg-precision text-white"
+                        : "bg-muted text-muted-foreground hover:bg-muted/80"
+                    )}
+                  >측정 내역서</button>
+                </div>
+                {summaryView === "recent"
+                  ? <PrecisionResultList measurements={currentMeasurements} />
+                  : <MeasurementSummary measurements={currentMeasurements} />
+                }
+              </div>
             )}
           </div>
 
-          {/* 세션 + 내보내기 — 모바일: 맨 아래, 데스크탑: 왼쪽 컬럼 하단 */}
+          {/* 세션 + 내보내기 */}
           <div className="flex flex-col gap-4 order-3 lg:order-1 lg:col-start-1">
             <div className="bg-card border border-border rounded-xl px-4 py-3 shadow-sm">
               <div className="flex items-center justify-between mb-2">
@@ -580,10 +729,10 @@ export default function PrecisionPage() {
                   </p>
                   {showSessionList && (
                     <div className="absolute top-full left-0 mt-1 w-64 bg-card border border-border rounded-xl shadow-lg z-20 max-h-48 overflow-y-auto">
-                      {session.sessions.map(s => (
+                      {sessions.map(s => (
                         <button
                           key={s.id}
-                          onClick={() => { session.setActiveSessionId(s.id); setShowSessionList(false); }}
+                          onClick={() => { setActiveSessionId(s.id); setShowSessionList(false); }}
                           className={cn(
                             "w-full text-left px-3 py-2.5 text-xs hover:bg-muted/50 border-b border-border/40 last:border-0",
                             s.id === activeSessionId
@@ -618,7 +767,7 @@ export default function PrecisionPage() {
                     onClick={() => activeSession && exportToPdf(
                       activeSession.name, userName,
                       Object.fromEntries(
-                        Object.entries(activeSession.measurements).map(([k, v]) => [k, { ...v, cents: v.medianCents }])
+                        Object.entries(currentMeasurements).map(([k, v]) => [k, { ...v, cents: v.medianCents }])
                       )
                     )}
                     disabled={measuredCount === 0}
@@ -633,7 +782,7 @@ export default function PrecisionPage() {
                     onClick={() => activeSession && exportToImage(
                       activeSession.name, userName,
                       Object.fromEntries(
-                        Object.entries(activeSession.measurements).map(([k, v]) => [k, { ...v, cents: v.medianCents }])
+                        Object.entries(currentMeasurements).map(([k, v]) => [k, { ...v, cents: v.medianCents }])
                       )
                     )}
                     disabled={measuredCount === 0}
@@ -661,7 +810,8 @@ export default function PrecisionPage() {
                     <ol className="list-decimal list-inside space-y-0.5 pl-1">
                       <li>마이크 켜기 → 건반을 칩니다</li>
                       <li>손을 떼면 1회 수집</li>
-                      <li>3회 이상 수집 시 확정 가능</li>
+                      <li><strong>3회 달성 → 자동 저장</strong></li>
+                      <li>4~5회는 확정 버튼으로 수동 저장</li>
                     </ol>
                   </div>
                   <div>
@@ -669,10 +819,10 @@ export default function PrecisionPage() {
                     <ol className="list-decimal list-inside space-y-0.5 pl-1">
                       <li>마이크 켜기 → 건반을 칩니다</li>
                       <li>스트로브가 안정되면 자동 수집</li>
-                      <li>3회 이상 수집 시 확정 가능</li>
+                      <li><strong>3회 달성 → 자동 저장</strong></li>
                     </ol>
                   </div>
-                  <p className="text-precision/75">💡 5회 수집 시 자동 저장됩니다</p>
+                  <p className="text-precision/75">💡 5회 수집 시에도 자동 저장됩니다</p>
                 </div>
               </div>
             )}
