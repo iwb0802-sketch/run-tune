@@ -3,22 +3,19 @@
  *
  * 자동저장 로직:
  *  - 3회 달성 → saveCurrentToSession (패널 유지, 계속 측정 가능)
- *  - 4~5회 구간 → 확정버튼 활성 → confirmCurrent (패널 유지)
+ *  - 4~5회 구간 → 확정버튼으로 수동 저장 (패널 유지)
  *  - 5회 달성 → saveCurrentToSession (패널 유지)
- *  - 다음 건반 이동 시 → resetPending
+ *  - 건반 이동 → resetPending
  *
  * 엔진 분기:
- *  - keyIndex 0~26  (1~27번):  useTargetedStrobe
- *  - keyIndex 27~87 (28~88번): usePitchDetector
+ *  - keyIndex 0~26  → useTargetedStrobe
+ *  - keyIndex 27~87 → usePitchDetector
  */
 
 import { useState, useCallback, useRef } from "react";
 
-/** 3회 달성 → 자동저장 (패널 유지) */
 export const AUTO_SAVE_SAMPLES = 3;
-/** 5회 달성 → 자동저장 (최대) */
 export const MAX_SAMPLES = 5;
-/** @deprecated 하위 호환 */
 export const MIN_SAMPLES = AUTO_SAVE_SAMPLES;
 
 export interface PrecisionMeasurement {
@@ -53,9 +50,21 @@ function saveSessions(s: PrecisionSession[]) {
 }
 
 export function usePrecisionSession() {
+  // ── Refs 먼저 선언 (클로저/초기화 순서 보장) ──────────────────────
+  const activeSessionIdRef = useRef<string | null>(null);
+  const pendingKeyRef = useRef<number | null>(null);
+  const centsHistoryRef = useRef<number[]>([]);
+  const currentRoundBufferRef = useRef<number[]>([]);
+  const isRoundActiveRef = useRef(false);
+
+  // ── State ────────────────────────────────────────────────────────
   const [sessions, setSessions] = useState<PrecisionSession[]>(() => loadSessions());
+
   const [activeSessionId, setActiveSessionId] = useState<string | null>(() => {
-    const s = loadSessions(); return s[0]?.id ?? null;
+    const list = loadSessions();
+    const id = list[0]?.id ?? null;
+    activeSessionIdRef.current = id; // ref 동기화
+    return id;
   });
 
   const [pendingKeyIndex, setPendingKeyIndex] = useState<number | null>(null);
@@ -63,12 +72,7 @@ export function usePrecisionSession() {
   const [currentLive, setCurrentLive] = useState<number | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
 
-  const pendingKeyRef = useRef<number | null>(null);
-  const centsHistoryRef = useRef<number[]>([]);
-  const currentRoundBufferRef = useRef<number[]>([]);
-  const isRoundActiveRef = useRef(false);
-  const activeSessionIdRef = useRef<string | null>(null);
-
+  // ── 파생값 ──────────────────────────────────────────────────────
   const activeSession = sessions.find(s => s.id === activeSessionId) ?? null;
   const measuredCount = activeSession ? Object.keys(activeSession.measurements).length : 0;
 
@@ -76,16 +80,14 @@ export function usePrecisionSession() {
     ? Math.round(calcMedian(centsHistory) * 10) / 10
     : null;
 
-  /** 정확히 3회 달성 → 자동저장 트리거 */
+  /** 정확히 3회 = 자동저장 트리거 */
   const shouldAutoSave3 = centsHistory.length === AUTO_SAVE_SAMPLES;
-  /** 5회 달성 → 자동저장 트리거 */
+  /** 정확히 5회 = 자동저장 트리거 */
   const shouldAutoSave5 = centsHistory.length === MAX_SAMPLES;
-  /** 4~5회 구간 → 확정버튼 활성 */
-  const canConfirm = centsHistory.length >= AUTO_SAVE_SAMPLES && centsHistory.length <= MAX_SAMPLES;
+  /** 4~5회만 = 확정버튼 활성 (3회는 자동저장만) */
+  const canConfirm = centsHistory.length > AUTO_SAVE_SAMPLES && centsHistory.length <= MAX_SAMPLES;
 
-  // ─── 세션 관리 ───────────────────────────────────────────────────
-
-  /** pending 상태만 초기화 (건반 이동 시 호출) */
+  // ── 세션 관리 ────────────────────────────────────────────────────
   const resetPending = useCallback(() => {
     pendingKeyRef.current = null;
     centsHistoryRef.current = [];
@@ -121,12 +123,16 @@ export function usePrecisionSession() {
     resetPending();
   }, [resetPending]);
 
-  // ─── 저장만 (패널 유지) ───────────────────────────────────────────
-  /** 현재 centsHistory를 세션에 저장. resetPending 호출 안 함 → 패널 유지. */
+  // ── 저장만 (패널 유지) ───────────────────────────────────────────
+  /**
+   * 현재 centsHistoryRef를 세션에 저장.
+   * resetPending 호출 안 함 → 패널 그대로 유지.
+   */
   const saveCurrentToSession = useCallback((frequency: number) => {
     const ki = pendingKeyRef.current;
     const sid = activeSessionIdRef.current;
     const history = centsHistoryRef.current;
+
     if (!sid || ki === null || history.length < AUTO_SAVE_SAMPLES) return;
 
     const median = Math.round(calcMedian(history) * 10) / 10;
@@ -137,23 +143,25 @@ export function usePrecisionSession() {
       frequency,
       measuredAt: Date.now(),
     };
+
     setSessions(prev => {
-      const u = prev.map(s => s.id === sid
-        ? { ...s, measurements: { ...s.measurements, [ki]: measurement } }
-        : s);
-      saveSessions(u); return u;
+      const u = prev.map(s =>
+        s.id === sid
+          ? { ...s, measurements: { ...s.measurements, [ki]: measurement } }
+          : s
+      );
+      saveSessions(u);
+      return u;
     });
-    // pendingKeyRef/centsHistoryRef 유지 → 추가 측정 가능
   }, []);
 
-  // ─── 저장 + 패널 유지 (수동 확정) ───────────────────────────────
-  /** 확정버튼 누를 때: 저장하고 패널은 유지. resetPending은 건반 이동 시. */
+  // ── 수동 확정 (확정버튼) ─────────────────────────────────────────
+  /** 저장만, 패널 유지. 건반 이동은 사용자가 직접. */
   const confirmCurrent = useCallback((frequency: number) => {
     saveCurrentToSession(frequency);
-    // 패널 유지 — resetPending 호출 안 함
   }, [saveCurrentToSession]);
 
-  // ─── 피치 수신 ───────────────────────────────────────────────────
+  // ── 피치 수신 (중/고음) ──────────────────────────────────────────
   const onPitchActive = useCallback((keyIndex: number, cents: number) => {
     if (pendingKeyRef.current !== keyIndex) {
       pendingKeyRef.current = keyIndex;
@@ -166,11 +174,10 @@ export function usePrecisionSession() {
       setIsCapturing(true);
       return;
     }
-    if (centsHistoryRef.current.length >= MAX_SAMPLES) return; // 이미 최대
+    if (centsHistoryRef.current.length >= MAX_SAMPLES) return;
     currentRoundBufferRef.current.push(cents);
     isRoundActiveRef.current = true;
-    const live = Math.round(calcMedian(currentRoundBufferRef.current) * 10) / 10;
-    setCurrentLive(live);
+    setCurrentLive(Math.round(calcMedian(currentRoundBufferRef.current) * 10) / 10);
     setIsCapturing(true);
   }, []);
 
@@ -193,6 +200,7 @@ export function usePrecisionSession() {
     setCurrentLive(null);
   }, []);
 
+  // ── 스트로브 수신 (저음) ─────────────────────────────────────────
   const onStrobeSample = useCallback((keyIndex: number, cents: number) => {
     if (pendingKeyRef.current !== keyIndex) {
       pendingKeyRef.current = keyIndex;
@@ -207,6 +215,7 @@ export function usePrecisionSession() {
     setIsCapturing(false);
   }, []);
 
+  // ── activeSessionId 변경 ─────────────────────────────────────────
   const setActiveSessionIdWithRef = useCallback((id: string) => {
     activeSessionIdRef.current = id;
     setActiveSessionId(id);
