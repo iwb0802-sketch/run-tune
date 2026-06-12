@@ -263,7 +263,7 @@ export default function PrecisionPage() {
       <main className="flex-1 container py-4 max-w-6xl mx-auto px-4">
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4">
           {/* 왼쪽 */}
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-4 order-1 lg:order-1 lg:col-start-1">
 
             {/* 조율 커브 */}
             <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
@@ -306,86 +306,9 @@ export default function PrecisionPage() {
             </div>
           </div>
 
-          {/* 세션 + 내보내기 */}
-          <div className="bg-card border border-border rounded-xl px-4 py-3 shadow-sm">
-            <div className="flex items-center justify-between mb-2">
-              <div className="relative flex-1 mr-2">
-                <button
-                  onClick={() => setShowSessionList(v => !v)}
-                  className="flex items-center gap-1.5 text-sm text-foreground/85 hover:text-foreground max-w-full">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                    <polyline points="14 2 14 8 20 8" />
-                  </svg>
-                  <span className="font-semibold truncate max-w-[160px]">{activeSession?.name || "세션 없음"}</span>
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <polyline points="6 9 12 15 18 9" />
-                  </svg>
-                </button>
-                <p className="text-xs text-muted-foreground/80 mt-0.5">{measuredCount} / 88건반 측정 완료</p>
-                {showSessionList && (
-                  <div className="absolute top-full left-0 mt-1 w-64 bg-card border border-border rounded-xl shadow-lg z-20 max-h-48 overflow-y-auto">
-                    {session.sessions.map(s => (
-                      <button key={s.id}
-                        onClick={() => { session.setActiveSessionId(s.id); setShowSessionList(false); }}
-                        className={cn("w-full text-left px-3 py-2.5 text-xs hover:bg-muted/50 border-b border-border/40 last:border-0",
-                          s.id === activeSessionId ? "bg-precision-soft text-precision font-bold" : "text-foreground/85")}>
-                        <div className="font-medium truncate">{s.name}</div>
-                        <div className="text-muted-foreground/80 mt-0.5">{Object.keys(s.measurements).length}건반 확정</div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <button onClick={() => { createSession(); setShowSessionList(false); }}
-                className="px-3 py-1.5 text-sm bg-precision text-white rounded-lg font-medium whitespace-nowrap">+ 새 세션</button>
-            </div>
-            <div className="flex flex-col gap-2 pt-2 border-t border-border/60">
-              <input type="text" placeholder="성명 입력 (PDF에 표시)" value={userName}
-                onChange={e => setUserName(e.target.value)}
-                className="w-full text-sm border border-border rounded-lg px-3 py-2 outline-none focus:border-precision/60" />
-              <div className="flex gap-2">
-                <button
-                  onClick={() => activeSession && exportToPdf(activeSession.name, userName,
-                    Object.fromEntries(Object.entries(activeSession.measurements).map(([k, v]) => [k, { ...v, cents: v.finalCents ?? 0 }])))}
-                  disabled={measuredCount === 0}
-                  className={cn("flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-bold",
-                    measuredCount > 0 ? "bg-precision text-white" : "bg-muted text-muted-foreground/60 cursor-not-allowed")}>
-                  📄 PDF
-                </button>
-                <button
-                  onClick={() => activeSession && exportToImage(activeSession.name, userName,
-                    Object.fromEntries(Object.entries(activeSession.measurements).map(([k, v]) => [k, { ...v, cents: v.finalCents ?? 0 }])))}
-                  disabled={measuredCount === 0}
-                  className={cn("flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-bold",
-                    measuredCount > 0 ? "bg-in-tune text-white" : "bg-muted text-muted-foreground/60 cursor-not-allowed")}>
-                  🖼️ 이미지
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* 안내 카드 */}
-          {showGuide && (
-            <div className="bg-precision-soft border border-precision/30 rounded-2xl p-4">
-              <div className="flex items-start justify-between mb-2">
-                <h3 className="text-sm font-bold text-precision">📌 정밀 측정이란?</h3>
-                <button onClick={() => setShowGuide(false)} className="text-precision/65 text-xs">닫기</button>
-              </div>
-              <div className="text-xs text-precision space-y-1.5 leading-relaxed">
-                <ol className="list-decimal list-inside space-y-0.5 pl-1">
-                  <li>마이크 시작 버튼을 탭합니다</li>
-                  <li>건반을 칩니다 → 안정 감지 즉시 <strong>1회 확정</strong></li>
-                  <li>3회 반복 후 스트로브 안정 시 자동 수집</li>
-                  <li><strong>3회 + 스트로브 1회</strong> 충족 시 자동 저장</li>
-                </ol>
-                <p className="text-precision/75">💡 같은 건반은 1.5초 간격으로 쳐주세요</p>
-              </div>
-            </div>
-          )}
-
-          {/* 오른쪽 */}
-          <div className="flex flex-col gap-4">
+          {/* 오른쪽 (모바일: 마이크 바로 아래, 데스크탑: 오른쪽 컬럼) */}
+          {/* 오른쪽 (모바일: order-2 → 마이크 바로 아래, 데스크탑: 오른쪽 컬럼) */}
+          <div className="flex flex-col gap-4 order-2 lg:order-2 lg:col-start-2 lg:row-span-2">
             {/* 현재 측정 패널 */}
             <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
               <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">현재 측정 중</h3>
@@ -558,9 +481,89 @@ export default function PrecisionPage() {
               />
             </div>
 
-            {/* 최근 확정 - 탭하면 상세 내역 표시 */}
+            {/* 최근 확정 */}
             {measuredCount > 0 && (
               <PrecisionResultList measurements={activeSession?.measurements ?? {}} />
+            )}
+          </div>
+
+          {/* 세션 + 내보내기 (모바일: 맨 아래 order-3, 데스크탑: 왼쪽 컬럼 하단) */}
+          <div className="flex flex-col gap-4 order-3 lg:order-1 lg:col-start-1">
+            <div className="bg-card border border-border rounded-xl px-4 py-3 shadow-sm">
+              <div className="flex items-center justify-between mb-2">
+                <div className="relative flex-1 mr-2">
+                  <button
+                    onClick={() => setShowSessionList(v => !v)}
+                    className="flex items-center gap-1.5 text-sm text-foreground/85 hover:text-foreground max-w-full">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                      <polyline points="14 2 14 8 20 8" />
+                    </svg>
+                    <span className="font-semibold truncate max-w-[160px]">{activeSession?.name || "세션 없음"}</span>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  </button>
+                  <p className="text-xs text-muted-foreground/80 mt-0.5">{measuredCount} / 88건반 측정 완료</p>
+                  {showSessionList && (
+                    <div className="absolute top-full left-0 mt-1 w-64 bg-card border border-border rounded-xl shadow-lg z-20 max-h-48 overflow-y-auto">
+                      {session.sessions.map(s => (
+                        <button key={s.id}
+                          onClick={() => { session.setActiveSessionId(s.id); setShowSessionList(false); }}
+                          className={cn("w-full text-left px-3 py-2.5 text-xs hover:bg-muted/50 border-b border-border/40 last:border-0",
+                            s.id === activeSessionId ? "bg-precision-soft text-precision font-bold" : "text-foreground/85")}>
+                          <div className="font-medium truncate">{s.name}</div>
+                          <div className="text-muted-foreground/80 mt-0.5">{Object.keys(s.measurements).length}건반 확정</div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <button onClick={() => { createSession(); setShowSessionList(false); }}
+                  className="px-3 py-1.5 text-sm bg-precision text-white rounded-lg font-medium whitespace-nowrap">+ 새 세션</button>
+              </div>
+              <div className="flex flex-col gap-2 pt-2 border-t border-border/60">
+                <input type="text" placeholder="성명 입력 (PDF에 표시)" value={userName}
+                  onChange={e => setUserName(e.target.value)}
+                  className="w-full text-sm border border-border rounded-lg px-3 py-2 outline-none focus:border-precision/60" />
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => activeSession && exportToPdf(activeSession.name, userName,
+                      Object.fromEntries(Object.entries(activeSession.measurements).map(([k, v]) => [k, { ...v, cents: v.finalCents ?? 0 }])))}
+                    disabled={measuredCount === 0}
+                    className={cn("flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-bold",
+                      measuredCount > 0 ? "bg-precision text-white" : "bg-muted text-muted-foreground/60 cursor-not-allowed")}>
+                    📄 PDF
+                  </button>
+                  <button
+                    onClick={() => activeSession && exportToImage(activeSession.name, userName,
+                      Object.fromEntries(Object.entries(activeSession.measurements).map(([k, v]) => [k, { ...v, cents: v.finalCents ?? 0 }])))}
+                    disabled={measuredCount === 0}
+                    className={cn("flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-bold",
+                      measuredCount > 0 ? "bg-in-tune text-white" : "bg-muted text-muted-foreground/60 cursor-not-allowed")}>
+                    🖼️ 이미지
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* 안내 카드 */}
+            {showGuide && (
+              <div className="bg-precision-soft border border-precision/30 rounded-2xl p-4">
+                <div className="flex items-start justify-between mb-2">
+                  <h3 className="text-sm font-bold text-precision">📌 정밀 측정이란?</h3>
+                  <button onClick={() => setShowGuide(false)} className="text-precision/65 text-xs">닫기</button>
+                </div>
+                <div className="text-xs text-precision space-y-1.5 leading-relaxed">
+                  <ol className="list-decimal list-inside space-y-0.5 pl-1">
+                    <li>마이크 시작 버튼을 탭합니다</li>
+                    <li>건반을 칩니다 → 안정 감지 즉시 <strong>1회 확정</strong></li>
+                    <li>3회 반복 후 스트로브 안정 시 자동 수집</li>
+                    <li><strong>3회 + 스트로브 1회</strong> 충족 시 자동 저장</li>
+                  </ol>
+                  <p className="text-precision/75">💡 같은 건반은 1.5초 간격으로 쳐주세요</p>
+                </div>
+              </div>
             )}
           </div>
         </div>
