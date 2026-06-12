@@ -471,32 +471,70 @@ export default function PrecisionPage() {
 
             {/* 현재 측정 패널 */}
             <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                  현재 측정 중
-                </h3>
-                {pendingKeyIndex !== null && (
-                  <span className="text-xs text-muted-foreground/70 bg-muted px-2 py-0.5 rounded-full">
-                    {centsHistory.length}/{MAX_SAMPLES}회
+              {/* 패널 상단: 타겟 건반 + 화살표 내비게이션 */}
+              <div className="flex items-center justify-between mb-3 pb-2.5 border-b border-border/60">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap">
+                    측정 중
+                  </h3>
+                  <span className="text-[10px] text-muted-foreground/50">·</span>
+                  <span
+                    className="text-sm font-bold text-precision truncate"
+                    style={{ fontFamily: "'JetBrains Mono', monospace" }}
+                  >
+                    {PIANO_KEYS[targetKeyIndex].noteName}{PIANO_KEYS[targetKeyIndex].octave}
                   </span>
-                )}
+                  <span className="text-[10px] text-muted-foreground/60 whitespace-nowrap">
+                    #{targetKeyIndex + 1}
+                  </span>
+                  {(() => {
+                    const measured = currentMeasurements[targetKeyIndex];
+                    if (!measured) return null;
+                    const inR = isInRange(targetKeyIndex, measured.medianCents);
+                    return (
+                      <span className={cn(
+                        "text-[10px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap",
+                        inR ? "bg-precision/15 text-precision" : "bg-off/15 text-off"
+                      )}>
+                        {measured.medianCents > 0 ? "+" : ""}{measured.medianCents.toFixed(1)}¢
+                      </span>
+                    );
+                  })()}
+                </div>
+                {/* 화살표 + 회차 카운터 */}
+                <div className="flex items-center gap-1 shrink-0">
+                  {pendingKeyIndex !== null && (
+                    <span className="text-[10px] text-muted-foreground/60 bg-muted px-1.5 py-0.5 rounded-full mr-1">
+                      {centsHistory.length}/{MAX_SAMPLES}
+                    </span>
+                  )}
+                  <button
+                    onClick={seq.prev}
+                    disabled={!seq.canPrev}
+                    className={cn(
+                      "w-7 h-7 rounded-lg flex items-center justify-center text-sm font-bold transition-colors",
+                      seq.canPrev
+                        ? "bg-muted hover:bg-muted/70 text-foreground/80 active:scale-95"
+                        : "bg-muted/40 text-muted-foreground/30 cursor-not-allowed"
+                    )}
+                    title="이전 건반"
+                  >‹</button>
+                  <button
+                    onClick={seq.next}
+                    disabled={!seq.canNext}
+                    className={cn(
+                      "w-7 h-7 rounded-lg flex items-center justify-center text-sm font-bold transition-colors",
+                      seq.canNext
+                        ? "bg-muted hover:bg-muted/70 text-foreground/80 active:scale-95"
+                        : "bg-muted/40 text-muted-foreground/30 cursor-not-allowed"
+                    )}
+                    title="다음 건반"
+                  >›</button>
+                </div>
               </div>
 
               {pendingKeyIndex !== null ? (
                 <>
-                  {/* 목표 음 */}
-                  <div className="text-center mb-4">
-                    <div
-                      className="text-4xl font-bold text-foreground"
-                      style={{ fontFamily: "'JetBrains Mono', monospace" }}
-                    >
-                      {PIANO_KEYS[pendingKeyIndex].noteName}{PIANO_KEYS[pendingKeyIndex].octave}
-                    </div>
-                    <div className="text-xs text-muted-foreground/80 mt-0.5">
-                      건반 {pendingKeyIndex + 1} · {isLowRange(pendingKeyIndex) ? "스트로브" : "피치감지"}
-                    </div>
-                  </div>
-
                   {/* 저음 스트로브 진행 상태 */}
                   {isLowRange(pendingKeyIndex) && isListening && (
                     <div className="mb-3 px-3 py-2 bg-muted/50 rounded-xl border border-border/60 text-xs">
