@@ -11,7 +11,7 @@
 import PitchMeter from "@/components/tuner/PitchMeter";
 import ReferenceAudioPanel from "@/components/tuner/ReferenceAudioPanel";
 import TuningCurveChart from "@/components/tuner/TuningCurveChart";
-import SnapshotPanel from "@/components/tuner/SnapshotPanel";
+import NoteCapturePanel from "@/components/tuner/NoteCapturePanel";
 import { usePitchDetector, PIANO_KEYS, PitchResult } from "@/hooks/usePitchDetector";
 import { useTuningSession } from "@/hooks/useTuningSession";
 import { exportToPdf, exportToImage } from "@/lib/tuner/exportPdf";
@@ -644,10 +644,11 @@ export default function Home() {
             }}
           />
 
-              {/* 순간 녹음 분석 패널 */}
-              <SnapshotPanel
-                sharedStream={isListening ? stream : undefined}
-                sharedAudioContext={isListening ? audioContext : undefined}
+              {/* 정밀 캡처 분석 패널 */}
+              <NoteCapturePanel
+                stream={stream}
+                audioContext={audioContext}
+                isListening={isListening}
                 onSave={(keyIndex, cents, frequency) => {
                   if (!activeSessionId) {
                     toast.error("먼저 세션을 생성해 주세요.");
