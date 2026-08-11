@@ -11,6 +11,7 @@
 import PitchMeter from "@/components/tuner/PitchMeter";
 import ReferenceAudioPanel from "@/components/tuner/ReferenceAudioPanel";
 import TuningCurveChart from "@/components/tuner/TuningCurveChart";
+import SnapshotPanel from "@/components/tuner/SnapshotPanel";
 import { usePitchDetector, PIANO_KEYS, PitchResult } from "@/hooks/usePitchDetector";
 import { useTuningSession } from "@/hooks/useTuningSession";
 import { exportToPdf, exportToImage } from "@/lib/tuner/exportPdf";
@@ -631,15 +632,31 @@ export default function Home() {
                 strobeKeyIndex={strobeKeyIndex}
                 strobePartial={strobePartial}
                 strobeAnalysisFreq={strobeAnalysisFreq}
-                fftSize={fftSize}
-                onFftSizeChange={setFftSize}
-                onSaveStrobe={(strobeCents) => {
-                  if (!activeSessionId) return;
-                  // 스트로브 값은 strobeCents 필드에만 저장 (자동 피치는 덮지 않음)
-                  const ki = strobeKeyIndex ?? displayPitch?.keyIndex;
-                  if (ki === null || ki === undefined) return;
-                  recordStrobeMeasurement(ki, strobeCents);
-                  toast.success(`스트로브 저장: 건반 ${ki + 1} ${strobeCents > 0 ? "+" : ""}${strobeCents.toFixed(1)}¢`);
+            fftSize={fftSize}
+            onFftSizeChange={setFftSize}
+            onSaveStrobe={(strobeCents) => {
+              if (!activeSessionId) return;
+              // 스트로브 값은 strobeCents 필드에만 저장 (자동 피치는 덮지 않음)
+              const ki = strobeKeyIndex ?? displayPitch?.keyIndex;
+              if (ki === null || ki === undefined) return;
+              recordStrobeMeasurement(ki, strobeCents);
+              toast.success(`스트로브 저장: 건반 ${ki + 1} ${strobeCents > 0 ? "+" : ""}${strobeCents.toFixed(1)}¢`);
+            }}
+          />
+
+              {/* 순간 녹음 분석 패널 */}
+              <SnapshotPanel
+                sharedStream={isListening ? stream : undefined}
+                sharedAudioContext={isListening ? audioContext : undefined}
+                onSave={(keyIndex, cents, frequency) => {
+                  if (!activeSessionId) {
+                    toast.error("먼저 세션을 생성해 주세요.");
+                    return;
+                  }
+                  recordMeasurement(keyIndex, cents, frequency);
+                  toast.success(
+                    `건반 ${keyIndex + 1} (${PIANO_KEYS[keyIndex].noteName}${PIANO_KEYS[keyIndex].octave}) ${cents > 0 ? "+" : ""}${cents.toFixed(1)}¢ 저장됨`
+                  );
                 }}
               />
 
