@@ -64,6 +64,7 @@ export function useBaselineCapture(
   const [recordingError, setRecordingError] = useState<string | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const captureVersionRef = useRef(0);
   const resultEmittedRef = useRef(false);
 
   const stopRecorder = useCallback(() => {
@@ -77,6 +78,7 @@ export function useBaselineCapture(
   }, []);
 
   const cancel = useCallback(() => {
+    captureVersionRef.current += 1;
     resultEmittedRef.current = false;
     stopRecorder();
     noteCapture.stop();
@@ -110,18 +112,23 @@ export function useBaselineCapture(
     resultEmittedRef.current = false;
 
     try {
+      const captureVersion = ++captureVersionRef.current;
       const mimeType = preferredMimeType();
       const recorder = mimeType
         ? new MediaRecorder(stream, { mimeType })
         : new MediaRecorder(stream);
 
       recorder.ondataavailable = (event) => {
+        if (captureVersion !== captureVersionRef.current) return;
         if (event.data.size > 0) chunksRef.current.push(event.data);
       };
       recorder.onerror = () => {
-        setRecordingError("오디오 녹음 중 오류가 발생했습니다.");
+        if (captureVersion === captureVersionRef.current) {
+          setRecordingError("오디오 녹음 중 오류가 발생했습니다.");
+        }
       };
       recorder.onstop = () => {
+        if (captureVersion !== captureVersionRef.current) return;
         const blobType = recorder.mimeType || mimeType || "audio/webm";
         const blob = new Blob(chunksRef.current, { type: blobType });
         setAudioBlob(blob.size > 0 ? blob : null);
