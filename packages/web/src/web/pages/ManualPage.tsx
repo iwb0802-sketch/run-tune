@@ -18,6 +18,8 @@ import { PIANO_KEYS, PitchResult, usePitchDetector } from "@/hooks/usePitchDetec
 import { useTargetedStrobe } from "@/hooks/useTargetedStrobe";
 import { useTuningSession } from "@/hooks/useTuningSession";
 import { useWakeLock } from "@/hooks/useWakeLock";
+import { useBaselineCapture } from "@/hooks/useBaselineCapture";
+import { deleteBaselineAudio, getBaselineAudio, saveBaselineAudio } from "@/lib/tuner/baselineAudioStore";
 import { cn } from "@/lib/utils";
 import { exportToPdf, exportToImage } from "@/lib/tuner/exportPdf";
 import { useAuth } from "@/hooks/useAuth";
@@ -67,6 +69,8 @@ export default function ManualPage() {
     setActiveSessionId,
     createSession,
     recordMeasurement,
+    addBaselineTake,
+    clearKeyBaseline,
     chartData,
     measuredCount,
   } = useTuningSession(null);
@@ -80,6 +84,9 @@ export default function ManualPage() {
   const advanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const matchedDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingMatchRef = useRef<PitchResult | null>(null);
+  const audioPlaybackRef = useRef<HTMLAudioElement | null>(null);
+  const [playingTakeId, setPlayingTakeId] = useState<string | null>(null);
+  const baselineSavingRef = useRef(false);
 
   const seqNextRef = useRef(seq.next);
   useEffect(() => { seqNextRef.current = seq.next; }, [seq.next]);
@@ -116,9 +123,15 @@ export default function ManualPage() {
   const commitMeasurement = useCallback(async (keyIndex: number, cents: number, freq: number) => {
     await ensureSession();
     recordMeasurement(keyIndex, cents, freq);
-    setMatchState({ kind: "matched", cents });
+    const baseline = activeSession?.measurements[keyIndex]?.baseline;
+    const relativeCents = baseline ? cents - baseline.cents : cents;
+    setMatchState({
+      kind: "matched",
+      cents: Math.round(relativeCents * 10) / 10,
+      toleranceCents: baseline?.toleranceCents,
+    });
     scheduleAdvance();
-  }, [ensureSession, recordMeasurement, scheduleAdvance]);
+  }, [activeSession, ensureSession, recordMeasurement, scheduleAdvance]);
 
   // ─── 28~88번: usePitchDetector 콜백 ──────────────────────────────
   const handlePitchDetected = useCallback((result: PitchResult) => {
@@ -149,6 +162,7 @@ export default function ManualPage() {
 
   const { isListening, startListening, stopListening, error, stream, audioContext } =
     usePitchDetector(handlePitchDetected, 4096);
+  const baselineCapture = useBaselineCapture(stream, audioContext);
 
   useWakeLock(isListening);
 
@@ -192,6 +206,83 @@ export default function ManualPage() {
 
   const targetKey = PIANO_KEYS[seq.targetKeyIndex];
   const isLow = isLowRange(seq.targetKeyIndex);
+  const keyBaseline = activeSession?.measurements[seq.targetKeyIndex]?.baseline ?? null;
+
+  const playBaselineTake = useCallback(async (audioId: string) => {
+    try {
+      audioPlaybackRef.current?.pause();
+      const blob = await getBaselineAudio(audioId);
+      if (!blob) {
+        sonnerToast("이 브라우저에 저장된 녹음이 없습니다. 기준값만 동기화된 경우일 수 있습니다.");
+        return;
+      }
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audioPlaybackRef.current = audio;
+      setPlayingTakeId(audioId);
+      const finish = () => {
+        URL.revokeObjectURL(url);
+        if (audioPlaybackRef.current === audio) audioPlaybackRef.current = null;
+        setPlayingTakeId(current => current === audioId ? null : current);
+      };
+      audio.onended = finish;
+      audio.onerror = finish;
+      await audio.play();
+    } catch {
+      sonnerToast("녹음을 재생할 수 없습니다.");
+      setPlayingTakeId(null);
+    }
+  }, []);
+
+  const clearBaseline = useCallback(async () => {
+    if (!keyBaseline) return;
+    if (!window.confirm(`${targetKey.noteName}${targetKey.octave}의 기준 녹음 ${keyBaseline.takes.length}개를 초기화할까요?`)) return;
+    try {
+      await deleteBaselineAudio(keyBaseline.takes.map((take) => take.audioId));
+    } catch {
+      // 브라우저 오디오 삭제 실패 여부와 관계없이 기준값은 초기화한다.
+    }
+    clearKeyBaseline(seq.targetKeyIndex);
+    setMatchState({ kind: "idle" });
+    sonnerToast("기준값을 초기화했습니다.");
+  }, [clearKeyBaseline, keyBaseline, seq.targetKeyIndex, targetKey.noteName, targetKey.octave]);
+
+  useEffect(() => {
+    const result = baselineCapture.result;
+    if (!result || baselineSavingRef.current) return;
+    baselineSavingRef.current = true;
+
+    if (result.keyIndex !== targetKeyRef.current) {
+      sonnerToast(`목표 음과 다른 ${result.noteName}${result.octave}가 감지되었습니다. 다시 녹음해 주세요.`);
+      baselineCapture.clearResult();
+      baselineSavingRef.current = false;
+      return;
+    }
+
+    const takeId = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    void saveBaselineAudio(takeId, result.audioBlob)
+      .then(() => {
+        addBaselineTake(result.keyIndex, {
+          id: takeId,
+          audioId: takeId,
+          frequency: result.frequency,
+          cents: result.cents,
+          confidence: result.confidence,
+          frameCount: result.frameCount,
+          capturedAt: Date.now(),
+        });
+        sonnerToast(`${result.noteName}${result.octave} 기준 타건을 저장했습니다.`);
+      })
+      .catch(() => sonnerToast("분석값은 저장하지 않았습니다. 오디오 저장 공간을 확인해 주세요."))
+      .finally(() => {
+        baselineCapture.clearResult();
+        baselineSavingRef.current = false;
+      });
+  }, [addBaselineTake, baselineCapture]);
+
+  useEffect(() => () => {
+    audioPlaybackRef.current?.pause();
+  }, []);
 
   // 저음 구간 상태 표시용
   const strobeMatchState: ManualMatchState = (() => {
@@ -199,8 +290,22 @@ export default function ManualPage() {
     if (!isListening) return { kind: "idle" };
     if (!strobe.signalOk) return { kind: "idle" };
     if (strobe.isCapturing) return { kind: "idle" };
-    if (strobe.strobeCents !== null) return { kind: "matched", cents: strobe.strobeCents };
-    if (strobe.liveCents !== null) return { kind: "matched", cents: strobe.liveCents };
+    if (strobe.strobeCents !== null) {
+      const baseline = activeSession?.measurements[seq.targetKeyIndex]?.baseline;
+      return {
+        kind: "matched",
+        cents: Math.round((strobe.strobeCents - (baseline?.cents ?? 0)) * 10) / 10,
+        toleranceCents: baseline?.toleranceCents,
+      };
+    }
+    if (strobe.liveCents !== null) {
+      const baseline = activeSession?.measurements[seq.targetKeyIndex]?.baseline;
+      return {
+        kind: "matched",
+        cents: Math.round((strobe.liveCents - (baseline?.cents ?? 0)) * 10) / 10,
+        toleranceCents: baseline?.toleranceCents,
+      };
+    }
     return { kind: "idle" };
   })();
 
@@ -301,6 +406,106 @@ export default function ManualPage() {
             )}
           </div>
         )}
+
+        {/* 녹음 기반 기준점 */}
+        <section className="bg-card border border-primary/25 rounded-xl px-4 py-3 shadow-sm">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-bold text-foreground">녹음 기준점</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                같은 건반을 3~5회 녹음해 대표값을 고정하고, 이후 타건은 이 기준과 비교합니다.
+              </p>
+            </div>
+            {keyBaseline && (
+              <button
+                onClick={() => { void clearBaseline(); }}
+                className="shrink-0 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-off/35 text-off-foreground hover:bg-off/10"
+              >
+                기준 초기화
+              </button>
+            )}
+          </div>
+
+          <div className="mt-3 rounded-lg bg-muted/55 border border-border/70 px-3 py-2.5">
+            {keyBaseline ? (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                <span className="font-bold text-primary">{targetKey.noteName}{targetKey.octave} 기준 등록</span>
+                <span className="tabular-nums text-foreground/85">{keyBaseline.frequency.toFixed(2)} Hz</span>
+                <span className="tabular-nums text-muted-foreground">평균율 {keyBaseline.cents > 0 ? "+" : ""}{keyBaseline.cents.toFixed(1)}¢</span>
+                <span className="tabular-nums text-muted-foreground">일치 범위 ±{keyBaseline.toleranceCents.toFixed(1)}¢</span>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">아직 기준값이 없습니다. 깨끗한 타건을 녹음해 첫 기준점을 만드세요.</p>
+            )}
+          </div>
+
+          {baselineCapture.phase !== "idle" && baselineCapture.phase !== "done" && (
+            <div className="mt-2">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>
+                  {baselineCapture.phase === "arming" && "타건을 기다리는 중…"}
+                  {baselineCapture.phase === "capturing" && "안정 구간을 녹음·분석 중…"}
+                  {baselineCapture.phase === "analyzing" && "대표값을 계산 중…"}
+                  {baselineCapture.phase === "error" && (baselineCapture.error ?? "녹음에 실패했습니다.")}
+                </span>
+                {baselineCapture.phase === "capturing" && <span>{Math.round(baselineCapture.progress * 100)}%</span>}
+              </div>
+              {baselineCapture.phase === "capturing" && (
+                <div className="w-full bg-muted rounded-full h-1.5 mt-1.5">
+                  <div className="bg-primary h-1.5 rounded-full transition-all" style={{ width: `${baselineCapture.progress * 100}%` }} />
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="mt-3 flex items-center gap-2">
+            <button
+              onClick={baselineCapture.start}
+              disabled={!isPro || !isListening || !["idle", "done", "error"].includes(baselineCapture.phase)}
+              title={!isListening ? "먼저 마이크를 켜 주세요" : undefined}
+              className={cn(
+                "flex-1 py-2.5 rounded-xl text-sm font-bold transition-all",
+                isPro && isListening && ["idle", "done", "error"].includes(baselineCapture.phase)
+                  ? "bg-primary text-white hover:bg-primary/90 active:scale-[0.98]"
+                  : "bg-muted text-muted-foreground cursor-not-allowed"
+              )}
+            >
+              {baselineCapture.phase === "arming" ? "타건 대기 중" : baselineCapture.phase === "capturing" ? "기준 녹음·분석 중" : "● 이 음을 기준으로 녹음"}
+            </button>
+            {(baselineCapture.phase === "arming" || baselineCapture.phase === "capturing" || baselineCapture.phase === "analyzing") && (
+              <button
+                onClick={baselineCapture.cancel}
+                className="px-3 py-2.5 rounded-xl text-sm font-medium border bg-card text-muted-foreground border-border hover:bg-muted"
+              >
+                취소
+              </button>
+            )}
+          </div>
+
+          {keyBaseline && (
+            <div className="mt-3 pt-3 border-t border-border/60">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-xs font-medium text-foreground/85">저장된 기준 타건 {keyBaseline.takes.length}/5</span>
+                <span className="text-[11px] text-muted-foreground">각 녹음은 이 브라우저에서 재생됩니다.</span>
+              </div>
+              <div className="space-y-1.5">
+                {keyBaseline.takes.map((take, index) => (
+                  <div key={take.id} className="flex items-center gap-2 rounded-lg bg-muted/40 px-2.5 py-2 text-xs">
+                    <button
+                      onClick={() => { void playBaselineTake(take.audioId); }}
+                      className="w-16 shrink-0 py-1 rounded-md bg-card border border-border font-medium text-foreground hover:bg-muted"
+                    >
+                      {playingTakeId === take.audioId ? "재생 중" : `재생 ${index + 1}`}
+                    </button>
+                    <span className="tabular-nums text-foreground/85">{take.frequency.toFixed(2)} Hz</span>
+                    <span className="tabular-nums text-muted-foreground">{take.cents > 0 ? "+" : ""}{take.cents.toFixed(1)}¢</span>
+                    <span className="ml-auto text-muted-foreground">신뢰도 {Math.round(take.confidence * 100)}%</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
 
         {/* 마이크 + 자동 진행 토글 */}
         <div className="flex items-center gap-2">

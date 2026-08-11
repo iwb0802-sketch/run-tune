@@ -7,6 +7,24 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { PIANO_KEYS } from "./usePitchDetector";
 import { supabase } from '@/lib/supabase/client';
 
+export interface BaselineTake {
+  id: string;
+  audioId: string;
+  frequency: number;
+  cents: number;
+  confidence: number;
+  frameCount: number;
+  capturedAt: number;
+}
+
+export interface KeyBaseline {
+  frequency: number;      // 여러 기준 타건의 대표 주파수
+  cents: number;          // 평균율 기준 대표 절대 cents
+  toleranceCents: number; // 재타건을 "기준 일치"로 볼 허용 범위
+  createdAt: number;
+  takes: BaselineTake[];
+}
+
 export interface KeyMeasurement {
   keyIndex: number;
   cents: number;          // 스트로브 1회 자동 저장값 (파란 점)
@@ -14,8 +32,27 @@ export interface KeyMeasurement {
   strobe1?: number;       // 스트로브 1회값 (cents와 동일, 평균 계산용)
   strobe2?: number;       // 스트로브 2회값
   autoCentsRef?: number;  // 자동 피치 참고값 (그래프에 찍히지 않음)
+  baseline?: KeyBaseline; // 녹음 기반 고정 기준점
   frequency: number;
   measuredAt: number;
+}
+
+function median(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? (sorted[middle - 1] + sorted[middle]) / 2
+    : sorted[middle];
+}
+
+function buildBaseline(takes: BaselineTake[]): KeyBaseline {
+  const frequency = median(takes.map((take) => take.frequency));
+  const cents = Math.round(median(takes.map((take) => take.cents)) * 10) / 10;
+  const medianDeviation = median(takes.map((take) => Math.abs(take.cents - cents)));
+  // 미세한 분석 흔들림은 숨기되, 과도하게 넓어져 실제 편차를 놓치지 않도록 제한한다.
+  const toleranceCents = Math.min(8, Math.max(1.5, Math.round((medianDeviation * 2 + 0.8) * 10) / 10));
+
+  return { frequency, cents, toleranceCents, createdAt: Date.now(), takes };
 }
 export interface TuningSession { id: string; name: string; createdAt: number; measurements: Record<number, KeyMeasurement>; }
 
@@ -135,6 +172,50 @@ export function useTuningSession(userId?: string | null) {
    * - 1회: cents(파란 점)에 자동 저장 + strobe1 기록
    * - 2회(수동): strobe1+strobe2 평균 계산 → strobeCents(주황 삼각형)에 저장
    */
+  const addBaselineTake = useCallback((keyIndex: number, take: BaselineTake) => {
+    const sid = activeSessionIdRef.current;
+    if (!sid) return;
+
+    setSessions(prev => {
+      const u = prev.map(session => {
+        if (session.id !== sid) return session;
+        const existing = session.measurements[keyIndex];
+        const priorTakes = existing?.baseline?.takes ?? [];
+        // 최근 5회의 깨끗한 기준 타건으로 대표값을 계속 갱신한다.
+        const takes = [...priorTakes, take].slice(-5);
+        const baseline = buildBaseline(takes);
+        const updated: KeyMeasurement = {
+          ...(existing || { keyIndex, measuredAt: Date.now() }),
+          keyIndex,
+          cents: baseline.cents,
+          frequency: baseline.frequency,
+          baseline,
+          measuredAt: Date.now(),
+        };
+        return { ...session, measurements: { ...session.measurements, [keyIndex]: updated } };
+      });
+      if (!userId) saveLocal(u); else syncToCloud(u, sid);
+      return u;
+    });
+  }, [userId, syncToCloud]);
+
+  const clearKeyBaseline = useCallback((keyIndex: number) => {
+    const sid = activeSessionIdRef.current;
+    if (!sid) return;
+
+    setSessions(prev => {
+      const u = prev.map(session => {
+        if (session.id !== sid) return session;
+        const existing = session.measurements[keyIndex];
+        if (!existing?.baseline) return session;
+        const { baseline: _baseline, ...withoutBaseline } = existing;
+        return { ...session, measurements: { ...session.measurements, [keyIndex]: withoutBaseline } };
+      });
+      if (!userId) saveLocal(u); else syncToCloud(u, sid);
+      return u;
+    });
+  }, [userId, syncToCloud]);
+
   const recordStrobeMeasurement = useCallback((keyIndex: number, strobeCents: number) => {
     const sid = activeSessionIdRef.current;
     if (!sid) return;
@@ -208,5 +289,5 @@ export function useTuningSession(userId?: string | null) {
 
   const measuredCount = activeSession ? Object.keys(activeSession.measurements).length : 0;
 
-  return { sessions, activeSession, activeSessionId, setActiveSessionId, createSession, deleteSession, recordMeasurement, recordStrobeMeasurement, undoLastMeasurement, undoStack, clearAllMeasurements, renameSession, importSession, chartData, measuredCount };
+  return { sessions, activeSession, activeSessionId, setActiveSessionId, createSession, deleteSession, recordMeasurement, addBaselineTake, clearKeyBaseline, recordStrobeMeasurement, undoLastMeasurement, undoStack, clearAllMeasurements, renameSession, importSession, chartData, measuredCount };
 }
