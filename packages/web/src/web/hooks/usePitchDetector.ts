@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   applyHannWindow, detectPitchYIN, correctOctaveByHPS,
-  getRMS, median,
+  getRMS, median, stabilizeWithNeighbors, CONFIDENCE_THRESHOLD,
 } from "@/lib/tuner/pitchEngine";
 
 export const PIANO_KEYS = Array.from({ length: 88 }, (_, i) => {
@@ -166,14 +166,16 @@ export function usePitchDetector(
 
             const counts: Record<number, number> = {};
             recentKeys.current.forEach(k => { counts[k] = (counts[k] || 0) + 1; });
-            const [topKey, topCount] = Object.entries(counts)
+            const [topKey] = Object.entries(counts)
               .sort((a, b) => Number(b[1]) - Number(a[1]))[0];
             const stableKi = parseInt(topKey);
 
-            if (Number(topCount) >= MIN_MATCH) {
-              const centsArr = recentKeys.current
-                .map((k, i) => k === stableKi ? recentCents.current[i] : null)
-                .filter((v): v is number => v !== null);
+            // 이웃 건반(±1반음) 표본을 합산해 경계에서의 흔들림을 보정
+            const { confidence, centsArr } = stabilizeWithNeighbors(
+              recentKeys.current, recentCents.current, stableKi
+            );
+
+            if (centsArr.length >= MIN_MATCH && confidence >= CONFIDENCE_THRESHOLD) {
               const stableCents = Math.round(median(centsArr) * 10) / 10;
 
               const result: PitchResult = {
@@ -182,14 +184,12 @@ export function usePitchDetector(
                 noteName: PIANO_KEYS[stableKi].noteName,
                 octave: PIANO_KEYS[stableKi].octave,
                 cents: stableCents,
-                confidence: Number(topCount) / WINDOW,
+                confidence,
                 rms,
               };
 
-              if (result.confidence >= 0.55) {
-                setCurrentPitch(result);
-                onPitchDetected?.(result);
-              }
+              setCurrentPitch(result);
+              onPitchDetected?.(result);
             }
           }
         }

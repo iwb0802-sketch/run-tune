@@ -241,6 +241,33 @@ export function goertzel(
   };
 }
 
+/* ---------- 안정화 파라미터 ---------- */
+export const CONFIDENCE_THRESHOLD = 0.55; // 표본 신뢰도 최소치 (일치 프레임 / WINDOW)
+export const NEIGHBOR_KEY_RANGE = 1;       // 이웃 건반 참조 범위 (반음 단위)
+
+/* ---------- 이웃 건반 참조 안정화 ----------
+ * 피치가 두 건반 경계 부근에서 흔들리면 정확히 일치하는 키만 카운트할 경우
+ * 표본이 양쪽 건반으로 갈려 confidence가 항상 낮게 나오고 안정화가 안 됨.
+ * topKey ± neighborRange 반음 이내의 프레임을 같은 건반의 표본으로 간주해
+ * confidence를 합산하고, 이웃 건반의 cents는 topKey 기준(±100cent 단위)으로
+ * 환산해 median 계산에 포함시킨다.
+ */
+export function stabilizeWithNeighbors(
+  keys: number[],
+  cents: number[],
+  topKey: number,
+  neighborRange = NEIGHBOR_KEY_RANGE
+): { confidence: number; centsArr: number[] } {
+  const centsArr: number[] = [];
+  for (let i = 0; i < keys.length; i++) {
+    const diff = keys[i] - topKey;
+    if (Math.abs(diff) <= neighborRange) {
+      centsArr.push(cents[i] + diff * 100);
+    }
+  }
+  return { confidence: keys.length ? centsArr.length / keys.length : 0, centsArr };
+}
+
 /* ---------- 위상차 → cent ----------
  * targetFreq 빈의 위상이 시간 dtSec 동안 deltaPhase만큼 변했을 때,
  * 실제 주파수는 targetFreq + deltaPhase/(2π·dtSec)
