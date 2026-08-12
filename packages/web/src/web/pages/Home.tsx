@@ -15,7 +15,7 @@ import NoteCapturePanel from "@/components/tuner/NoteCapturePanel";
 import { usePitchDetector, PIANO_KEYS, PitchResult } from "@/hooks/usePitchDetector";
 import { useTuningSession } from "@/hooks/useTuningSession";
 import { exportToPdf, exportToImage } from "@/lib/tuner/exportPdf";
-import { useStrobeDetector } from "@/hooks/useStrobeDetector";
+import { useTargetedStrobe } from "@/hooks/useTargetedStrobe";
 
 
 import { useWakeLock } from "@/hooks/useWakeLock";
@@ -141,12 +141,12 @@ export default function Home() {
   useWakeLock(isListening);
 
   // 스트로브 독립 감지 (자동 센트와 완전 분리)
-  const { strobeCents: stableCents, isCapturing, captureProgress, currentNote: strobeNote, currentKeyIndex: strobeKeyIndex, analysisFreq: strobeAnalysisFreq, partial: strobePartial } = useStrobeDetector(
+  // useTargetedStrobe: 저음 배음(파셜) 자동 락 + Goertzel 위상누적 — 수동/정밀 탭과 동일한 PT-100식 정밀 측정
+  const { strobeCents: stableCents, isCapturing, captureProgress, currentNote: strobeNote, currentKeyIndex: strobeKeyIndex, analysisFreq: strobeAnalysisFreq, partial: strobePartial } = useTargetedStrobe(
     isListening ? stream : null,
     isListening ? audioContext : null,
-    stableDuration,
-    fftSize,
-    currentPitch?.keyIndex ?? null  // 자동 피치 기준 건반으로 옵타브 보정
+    currentPitch?.keyIndex ?? null,  // 자동 피치 기준 건반으로 옵타브 보정
+    { stableDurationMs: stableDuration, fftSize }
   );
 
   // 스트로브 1회 자동저장 - 안정값 감지 시 자동으로 파란 점에 기록
