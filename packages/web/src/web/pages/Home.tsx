@@ -12,7 +12,8 @@ import PitchMeter from "@/components/tuner/PitchMeter";
 import ReferenceAudioPanel from "@/components/tuner/ReferenceAudioPanel";
 import TuningCurveChart from "@/components/tuner/TuningCurveChart";
 import NoteCapturePanel from "@/components/tuner/NoteCapturePanel";
-import { usePitchDetector, PIANO_KEYS, PitchResult } from "@/hooks/usePitchDetector";
+import { PIANO_KEYS, type PitchResult } from "@/hooks/usePitchDetector";
+import { useAutoCompositeTuner, type AutoCompositeResult } from "@/hooks/useAutoCompositeTuner";
 import { useTuningSession } from "@/hooks/useTuningSession";
 import { exportToPdf, exportToImage } from "@/lib/tuner/exportPdf";
 import { useTargetedStrobe } from "@/hooks/useTargetedStrobe";
@@ -115,27 +116,45 @@ export default function Home() {
   const activeSessionIdRef = useRef(activeSessionId);
   useEffect(() => { activeSessionIdRef.current = activeSessionId; }, [activeSessionId]);
 
-  const handlePitchDetected = useCallback((result: PitchResult) => {
-    if (result.confidence >= 0.55) {
-      setPendingPitch(result);
-      pendingRef.current = result;
-      // 자동저장 모드 — ref로 최신값 확인
-      if (autoSaveRef.current && activeSessionIdRef.current) {
-        if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
-        autoSaveTimerRef.current = setTimeout(() => {
-          if (!autoSaveRef.current) return;
-          const p = pendingRef.current;
-          if (!p) return;
-          recordMeasurement(p.keyIndex, p.cents, p.frequency);
-          setPendingPitch(null);
-          pendingRef.current = null;
-        }, 800);
-      }
+  const handleCompositeConfirmed = useCallback((confirmed: AutoCompositeResult) => {
+    if (confirmed.finalCents === null || confirmed.confidence < 0.55) return;
+    const finalPitch: PitchResult = {
+      ...confirmed,
+      cents: confirmed.finalCents,
+    };
+    setPendingPitch(finalPitch);
+    pendingRef.current = finalPitch;
+
+    // 자동저장은 실시간 프레임이 아니라 복합 엔진이 확정한 안정값만 기록한다.
+    if (autoSaveRef.current && activeSessionIdRef.current) {
+      recordMeasurement(finalPitch.keyIndex, finalPitch.cents, finalPitch.frequency);
+      setPendingPitch(null);
+      pendingRef.current = null;
     }
   }, [recordMeasurement]);
 
-  const { isListening, currentPitch, startListening, stopListening, error, isRecovering, stream, audioContext } =
-    usePitchDetector(handlePitchDetected, fftSize);
+  const {
+    isListening,
+    result: compositePitch,
+    startListening,
+    stopListening,
+    error,
+    isRecovering,
+    stream,
+    audioContext,
+  } = useAutoCompositeTuner(handleCompositeConfirmed, fftSize);
+
+  const currentPitch: PitchResult | null = compositePitch
+    ? {
+        frequency: compositePitch.frequency,
+        keyIndex: compositePitch.keyIndex,
+        noteName: compositePitch.noteName,
+        octave: compositePitch.octave,
+        cents: compositePitch.cents,
+        confidence: compositePitch.confidence,
+        rms: compositePitch.rms,
+      }
+    : null;
 
   // 화면 꺼짐 방지 - 마이크 켜지면 자동 활성화
   useWakeLock(isListening);
@@ -563,6 +582,18 @@ export default function Home() {
                     </span>
                   )}
 
+                  {isListening && compositePitch && (
+                    <span className={cn(
+                      "flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border",
+                      compositePitch.crossValid
+                        ? "text-in-tune bg-in-tune-soft border-in-tune/40"
+                        : "text-warn bg-warn-soft border-warn/40"
+                    )}>
+                      <span className={cn("w-1.5 h-1.5 rounded-full", compositePitch.crossValid ? "bg-in-tune" : "bg-warn")} />
+                      {compositePitch.crossValid ? "복합 검증" : "배음 교차 확인 중"}
+                    </span>
+                  )}
+
                   {/* 자동저장 토글 */}
                   <button onClick={() => handleSetAutoSave(v => !v)}
                     className={cn(
@@ -608,7 +639,7 @@ export default function Home() {
                 )}
                 {autoSave && (
                   <div className="text-xs text-in-tune">
-                    안정 감지 후 0.8초 뒤 자동 저장됩니다 &nbsp;
+                      복합 검증·안정 확정 후 자동 저장됩니다 &nbsp;
                     <kbd className="px-1.5 py-0.5 bg-in-tune-soft border border-in-tune/40 rounded text-in-tune font-mono">Ctrl+Z</kbd> 되돌리기
                   </div>
                 )}
