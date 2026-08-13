@@ -590,7 +590,11 @@ export default function Home() {
                         : "text-warn bg-warn-soft border-warn/40"
                     )}>
                       <span className={cn("w-1.5 h-1.5 rounded-full", compositePitch.crossValid ? "bg-in-tune" : "bg-warn")} />
-                      {compositePitch.crossValid ? "복합 검증" : "배음 교차 확인 중"}
+                      {compositePitch.profile === "trial-v2-low"
+                        ? "시험 V2 · B2 이하"
+                        : compositePitch.profile === "trial-v2-high"
+                          ? "시험 V2 · A♯5 이상"
+                          : compositePitch.crossValid ? "복합 검증" : "배음 교차 확인 중"}
                     </span>
                   )}
 

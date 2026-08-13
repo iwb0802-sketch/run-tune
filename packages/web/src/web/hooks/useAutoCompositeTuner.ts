@@ -22,7 +22,11 @@ import {
   CONFIDENCE_THRESHOLD,
 } from "@/lib/tuner/pitchEngine";
 
+export type AutoCompositeProfile = "trial-v2-low" | "current-mid" | "current-high" | "trial-v2-high";
+
 export interface AutoCompositeResult extends PitchResult {
+  /** B2 이하·A♯5 이상은 시험용 V2, 중간은 기존 자동 복합 엔진 */
+  profile: AutoCompositeProfile;
   yinCents: number;
   goertzelCents: number;
   finalCents: number | null;
@@ -64,6 +68,9 @@ const COARSE_STEP_HIGH = 2;
 const SCAN_RANGE_CENTS = 50;
 const SCAN_RANGE_CENTS_HIGH = 80;
 const HIGH_KEY_THRESHOLD = 52;
+// 사용자 지정 경계: B2(건반 index 38) 이하 / A♯5(index 61) 이상은 시험용 V2를 사용한다.
+const TRIAL_LOW_MAX_KEY = 38;
+const TRIAL_HIGH_MIN_KEY = 61;
 const KEY_WINDOW = 15;
 const MIN_KEY_SAMPLES = 6;
 
@@ -76,12 +83,70 @@ function keyFromFrequency(frequency: number): { keyIndex: number; cents: number 
   return { keyIndex, cents: (midiFloat - midiRound) * 100 };
 }
 
-function frequencyToTargetCents(frequency: number, baseFrequency: number): number | null {
+function frequencyToTargetCents(
+  frequency: number,
+  baseFrequency: number,
+  trialLow: boolean,
+): number | null {
   if (frequency <= 0 || baseFrequency <= 0) return null;
   let folded = frequency;
-  while (folded > baseFrequency * 1.5) folded /= 2;
-  while (folded < baseFrequency * 0.67) folded *= 2;
+  // 시험용 V2 저음부는 강한 2~6배음 혼입을 고려해 더 넓은 옥타브 폴딩 범위를 쓴다.
+  const upperMargin = trialLow ? 3.5 : 1.5;
+  const lowerMargin = trialLow ? 0.4 : 0.67;
+  while (folded > baseFrequency * upperMargin) folded /= 2;
+  while (folded < baseFrequency * lowerMargin) folded *= 2;
   return Math.round(1200 * Math.log2(folded / baseFrequency) * 10) / 10;
+}
+
+function standardDeviation(values: number[]): number {
+  if (values.length < 2) return 0;
+  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+  return Math.sqrt(values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length);
+}
+
+function twoPassGoertzelScan(
+  buffer: Float32Array,
+  sampleRate: number,
+  targetFrequency: number,
+  baseFrequency: number,
+  partial: number,
+  trialLow: boolean,
+  trialHigh: boolean,
+): { frequency: number; cents: number } {
+  const coarseStep = trialLow ? 1 : 2;
+  const fineStep = trialLow ? 0.2 : 0.5;
+  const range = trialHigh ? 80 : 50;
+  const steps = Math.round(range / coarseStep);
+  let coarseBestFrequency = targetFrequency;
+  let coarseBestMagnitude = -1;
+
+  for (let offset = -steps; offset <= steps; offset++) {
+    const frequency = targetFrequency * Math.pow(2, (offset * coarseStep) / 1200);
+    const magnitude = goertzel(buffer, sampleRate, frequency).magnitude;
+    if (magnitude > coarseBestMagnitude) {
+      coarseBestMagnitude = magnitude;
+      coarseBestFrequency = frequency;
+    }
+  }
+
+  const fineRange = coarseStep * 2;
+  const fineSteps = Math.round(fineRange / fineStep);
+  let fineBestFrequency = coarseBestFrequency;
+  let fineBestMagnitude = -1;
+  for (let offset = -fineSteps; offset <= fineSteps; offset++) {
+    const frequency = coarseBestFrequency * Math.pow(2, (offset * fineStep) / 1200);
+    const magnitude = goertzel(buffer, sampleRate, frequency).magnitude;
+    if (magnitude > fineBestMagnitude) {
+      fineBestMagnitude = magnitude;
+      fineBestFrequency = frequency;
+    }
+  }
+
+  const measuredBaseFrequency = fineBestFrequency / partial;
+  return {
+    frequency: measuredBaseFrequency,
+    cents: Math.round(1200 * Math.log2(measuredBaseFrequency / baseFrequency) * 10) / 10,
+  };
 }
 
 /**
@@ -181,7 +246,9 @@ export function useAutoCompositeTuner(
       }
 
       const analyser = context.createAnalyser();
-      analyser.fftSize = fftSize;
+      // 자동 모드에서는 아직 건반을 알 수 없으므로, B2 이하 후보를 놓치지 않게
+      // 시험용 V2 저음 버퍼(8192)로 시작한 뒤 음역이 잠기면 해당 프로필 크기로 전환한다.
+      analyser.fftSize = 8192;
       analyser.smoothingTimeConstant = 0;
       analyserRef.current = analyser;
       context.createMediaStreamSource(stream).connect(analyser);
@@ -260,9 +327,30 @@ export function useAutoCompositeTuner(
           confirmedCycleRef.current = -1;
         }
 
-        const isLow = keyIndex <= 26;
-        const isHigh = keyIndex >= HIGH_KEY_THRESHOLD;
-        const rmsMinimum = isLow ? MIN_RMS_LOW : isHigh ? MIN_RMS_HIGH : MIN_RMS;
+        const usesTrialLow = keyIndex <= TRIAL_LOW_MAX_KEY;
+        const usesTrialHigh = keyIndex >= TRIAL_HIGH_MIN_KEY;
+        const profile: AutoCompositeProfile = usesTrialLow
+          ? "trial-v2-low"
+          : usesTrialHigh
+            ? "trial-v2-high"
+            : keyIndex >= HIGH_KEY_THRESHOLD
+              ? "current-high"
+              : "current-mid";
+
+        // B2 이하는 시험용 V2의 8192 버퍼, A♯5 이상은 V2의 4096 버퍼를 강제한다.
+        // 그 사이 중음역은 사용자가 선택한 기존 자동 탭 버퍼 설정을 그대로 유지한다.
+        const desiredFftSize = usesTrialLow ? 8192 : usesTrialHigh ? 4096 : fftSize;
+        if (analyserNode.fftSize !== desiredFftSize) {
+          analyserNode.fftSize = desiredFftSize;
+          bufferRef.current = new Float32Array(desiredFftSize);
+          spectrumRef.current = new Float32Array(analyserNode.frequencyBinCount);
+          rafRef.current = requestAnimationFrame(detect);
+          return;
+        }
+
+        const isLow = usesTrialLow || keyIndex <= 26;
+        const isHigh = usesTrialHigh || keyIndex >= HIGH_KEY_THRESHOLD;
+        const rmsMinimum = usesTrialLow ? 0.0036 : usesTrialHigh ? 0.0018 : (isLow ? MIN_RMS_LOW : isHigh ? MIN_RMS_HIGH : MIN_RMS);
         if (rms < rmsMinimum) {
           rafRef.current = requestAnimationFrame(detect);
           return;
@@ -270,7 +358,16 @@ export function useAutoCompositeTuner(
 
         const baseFrequency = PIANO_KEYS[keyIndex].freq;
         const sampleRate = activeContext.sampleRate;
-        const yinCents = frequencyToTargetCents(correctedFrequency, baseFrequency);
+        // 상·하부만 시험용 V2의 음역별 적응형 YIN을 재실행한다. 중앙(B2~A5)은 현행 로직 유지.
+        const v2YinFrequency = usesTrialLow
+          ? detectPitchYIN(windowed, sampleRate, 20, 200, Math.max(0.08, Math.min(0.12, 0.15 - rms * 0.5)))
+          : usesTrialHigh
+            ? detectPitchYIN(windowed, sampleRate, 450, 6000, Math.max(0.07, Math.min(0.12, 0.16 - rms * 0.8)))
+            : correctedFrequency;
+        const profiledFrequency = (usesTrialLow || usesTrialHigh) && v2YinFrequency > 0
+          ? correctOctaveByHPS(v2YinFrequency, spectrum, sampleRate, analyserNode.fftSize, 5, keyIndex)
+          : correctedFrequency;
+        const yinCents = frequencyToTargetCents(profiledFrequency, baseFrequency, usesTrialLow);
         const partial = isLow
           ? selectBestPartial(buffer, sampleRate, keyIndex, baseFrequency)
           : targetPartial(keyIndex);
@@ -279,25 +376,36 @@ export function useAutoCompositeTuner(
         const targetMagnitude = goertzel(buffer, sampleRate, targetFrequency);
         const lowerMagnitude = goertzel(buffer, sampleRate, targetFrequency * Math.pow(2, -1.5 / 12)).magnitude;
         const upperMagnitude = goertzel(buffer, sampleRate, targetFrequency * Math.pow(2, 1.5 / 12)).magnitude;
-        const dominanceRatio = isHigh ? 1.1 : DOMINANCE_RATIO;
+        const dominanceRatio = usesTrialLow ? 1.15 : usesTrialHigh ? 1.05 : (isHigh ? 1.1 : DOMINANCE_RATIO);
         const signalOk = targetMagnitude.magnitude > Math.max(lowerMagnitude, upperMagnitude, 1e-9) * dominanceRatio;
 
-        const step = isLow ? COARSE_STEP_LOW : isHigh ? COARSE_STEP_HIGH : COARSE_STEP_MID;
-        const scanCents = isHigh ? SCAN_RANGE_CENTS_HIGH : SCAN_RANGE_CENTS;
-        const scanSteps = Math.round(scanCents / step);
-        let bestFrequency = targetFrequency;
-        let bestMagnitude = -1;
-        for (let offset = -scanSteps; offset <= scanSteps; offset++) {
-          const testFrequency = targetFrequency * Math.pow(2, (offset * step) / 1200);
-          const magnitude = goertzel(buffer, sampleRate, testFrequency).magnitude;
-          if (magnitude > bestMagnitude) {
-            bestMagnitude = magnitude;
-            bestFrequency = testFrequency;
+        const trialV2Active = usesTrialLow || usesTrialHigh;
+        let measuredBaseFrequency: number;
+        let goertzelCents: number;
+        if (trialV2Active) {
+          const v2Scan = twoPassGoertzelScan(
+            buffer, sampleRate, targetFrequency, baseFrequency, partial, usesTrialLow, usesTrialHigh,
+          );
+          measuredBaseFrequency = v2Scan.frequency;
+          goertzelCents = v2Scan.cents;
+        } else {
+          const step = isLow ? COARSE_STEP_LOW : isHigh ? COARSE_STEP_HIGH : COARSE_STEP_MID;
+          const scanCents = isHigh ? SCAN_RANGE_CENTS_HIGH : SCAN_RANGE_CENTS;
+          const scanSteps = Math.round(scanCents / step);
+          let bestFrequency = targetFrequency;
+          let bestMagnitude = -1;
+          for (let offset = -scanSteps; offset <= scanSteps; offset++) {
+            const testFrequency = targetFrequency * Math.pow(2, (offset * step) / 1200);
+            const magnitude = goertzel(buffer, sampleRate, testFrequency).magnitude;
+            if (magnitude > bestMagnitude) {
+              bestMagnitude = magnitude;
+              bestFrequency = testFrequency;
+            }
           }
+          measuredBaseFrequency = bestFrequency / partial;
+          goertzelCents = Math.round(1200 * Math.log2(measuredBaseFrequency / baseFrequency) * 10) / 10;
         }
 
-        const measuredBaseFrequency = bestFrequency / partial;
-        const goertzelCents = Math.round(1200 * Math.log2(measuredBaseFrequency / baseFrequency) * 10) / 10;
         const threshold = isLow
           ? CROSS_VALID_THRESHOLD_LOW
           : isHigh
@@ -307,18 +415,23 @@ export function useAutoCompositeTuner(
           ? (signalOk || yinCents !== null)
           : (signalOk && yinCents !== null && Math.abs(yinCents - goertzelCents) <= threshold);
         const effectiveYin = yinCents ?? goertzelCents;
-        const liveCents = (crossValid && yinCents !== null)
-          ? Math.round(((effectiveYin + goertzelCents) / 2) * 10) / 10
-          : isHigh && signalOk
-            ? goertzelCents
-            : crossValid
-              ? Math.round(((effectiveYin + goertzelCents) / 2) * 10) / 10
-              : goertzelCents;
+        const liveCents = trialV2Active && yinCents !== null && crossValid
+          ? Math.round((usesTrialLow
+              ? yinCents * 0.35 + goertzelCents * 0.65
+              : yinCents * 0.55 + goertzelCents * 0.45) * 10) / 10
+          : (crossValid && yinCents !== null)
+            ? Math.round(((effectiveYin + goertzelCents) / 2) * 10) / 10
+            : isHigh && signalOk
+              ? goertzelCents
+              : crossValid
+                ? Math.round(((effectiveYin + goertzelCents) / 2) * 10) / 10
+                : goertzelCents;
 
-        const peakThreshold = isHigh ? PEAK_THRESHOLD_HIGH : PEAK_THRESHOLD;
-        const peakRatio = isHigh ? PEAK_RATIO_HIGH : PEAK_RATIO;
-        const stableDuration = isHigh ? STABLE_DURATION_MS_HIGH : STABLE_DURATION_MS;
-        const minimumSamples = isHigh ? MIN_SAMPLES_HIGH : MIN_SAMPLES;
+        const peakThreshold = usesTrialLow ? 0.012 : usesTrialHigh ? 0.006 : (isHigh ? PEAK_THRESHOLD_HIGH : PEAK_THRESHOLD);
+        const peakRatio = usesTrialLow ? 0.60 : usesTrialHigh ? 0.40 : (isHigh ? PEAK_RATIO_HIGH : PEAK_RATIO);
+        const stableDuration = usesTrialLow ? 1100 : usesTrialHigh ? 450 : (isHigh ? STABLE_DURATION_MS_HIGH : STABLE_DURATION_MS);
+        const minimumSamples = usesTrialLow ? 10 : usesTrialHigh ? 5 : (isHigh ? MIN_SAMPLES_HIGH : MIN_SAMPLES);
+        const maximumStddev = usesTrialLow ? 1.5 : usesTrialHigh ? 2.0 : null;
 
         if (rms > peakRmsRef.current * 1.5 && rms > 0.02) {
           peakRmsRef.current = rms;
@@ -344,7 +457,8 @@ export function useAutoCompositeTuner(
           isCapturing = true;
           captureProgress = Math.min(elapsed / stableDuration, 1);
 
-          if (elapsed >= stableDuration && captureBufferRef.current.length >= minimumSamples) {
+          const samplesStable = maximumStddev === null || standardDeviation(captureBufferRef.current) <= maximumStddev;
+          if (elapsed >= stableDuration && captureBufferRef.current.length >= minimumSamples && samplesStable) {
             finalCents = Math.round(median(captureBufferRef.current) * 10) / 10;
             captureStartRef.current = null;
             captureBufferRef.current = [];
@@ -362,6 +476,7 @@ export function useAutoCompositeTuner(
           cents: liveCents,
           confidence: keyConfidence,
           rms,
+          profile,
           yinCents: yinCents ?? goertzelCents,
           goertzelCents,
           finalCents,
