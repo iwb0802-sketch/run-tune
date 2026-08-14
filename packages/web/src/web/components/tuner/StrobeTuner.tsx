@@ -26,6 +26,12 @@ interface StrobeTunerProps {
   partial?: number | null;
   /** 실제 분석 중인 주파수 (Hz) */
   analysisFreq?: number | null;
+  /** 고정 기준 센트. 지정하면 실시간 감지값과의 차이로 스트로브가 흐른다. */
+  referenceCents?: number | null;
+  /** 고정 기준 모드에서 기준 조절 버튼을 숨긴다. */
+  hideReferenceControls?: boolean;
+  /** 고정 기준값의 상태 행 레이블 */
+  referenceLabel?: string;
 }
 
 // PT-100 스타일: 3줄 그룹이 간격을 두고 반복
@@ -36,7 +42,22 @@ const GROUP_GAP = 18;    // 그룹 간 간격
 const GROUP_COUNT = 6;   // 그룹 수
 const GROUP_W = GROUP_SIZE * (BAR_WIDTH + BAR_GAP) + GROUP_GAP; // 한 그룹 전체 폭
 
-export default function StrobeTuner({ detectedCents, stableCents, isCapturing, isActive, onSaveStrobe, stableDuration = 1200, onStableDurationChange, currentNote, currentKeyIndex, partial, analysisFreq }: StrobeTunerProps) {
+export default function StrobeTuner({
+  detectedCents,
+  stableCents,
+  isCapturing,
+  isActive,
+  onSaveStrobe,
+  stableDuration = 1200,
+  onStableDurationChange,
+  currentNote,
+  currentKeyIndex,
+  partial,
+  analysisFreq,
+  referenceCents = null,
+  hideReferenceControls = false,
+  referenceLabel = "기준",
+}: StrobeTunerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const offsetRef = useRef(0);
   const rafRef = useRef<number | null>(null);
@@ -46,18 +67,21 @@ export default function StrobeTuner({ detectedCents, stableCents, isCapturing, i
   // stableCents 없으면 detectedCents로 실시간 표시
   const activeStable = stableCents ?? detectedCents;
 
-  // 스트로브 오프셋 = 안정값 - 사용자 조정 기준값
-  const strobeOffset = activeStable !== null ? activeStable - targetCents : null;
+  // 스트로브 오프셋 = 실시간/안정 감지값 - 기준값.
+  // referenceCents가 있으면 사용자가 조정하는 값 대신 확정값을 고정 기준으로 쓴다.
+  const activeReference = referenceCents ?? targetCents;
+  const strobeOffset = activeStable !== null ? activeStable - activeReference : null;
   const isStopped = strobeOffset !== null && Math.abs(strobeOffset) <= 0.8;
 
   // 기준값 조정
   const adjustTarget = (delta: number) => {
+    if (referenceCents !== null) return;
     setTargetCents(prev => Math.round((prev + delta) * 10) / 10);
   };
 
   // 안정값으로 기준값 자동 설정
   const syncToDetected = () => {
-    if (activeStable !== null) {
+    if (referenceCents === null && activeStable !== null) {
       setTargetCents(Math.round(activeStable * 10) / 10);
     }
   };
@@ -164,7 +188,9 @@ export default function StrobeTuner({ detectedCents, stableCents, isCapturing, i
           </span>
         </div>
         <span className="text-xs text-muted-foreground" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
-          {activeStable !== null ? (
+          {referenceCents !== null ? (
+            <>{referenceLabel}: <span className="text-yellow-400">{referenceCents > 0 ? "+" : ""}{referenceCents.toFixed(1)}¢</span></>
+          ) : activeStable !== null ? (
             <>안정: <span className="text-yellow-400">{activeStable > 0 ? "+" : ""}{activeStable.toFixed(1)}¢</span></>
           ) : (
             <span className="text-muted-foreground">대기 중</span>
@@ -173,6 +199,7 @@ export default function StrobeTuner({ detectedCents, stableCents, isCapturing, i
       </div>
 
       {/* 기준값 조정 컨트롤 */}
+      {!hideReferenceControls && (
       <div className="px-3 py-2.5 flex items-center gap-2">
         <span className="text-xs text-muted-foreground mr-1">기준</span>
 
@@ -216,9 +243,10 @@ export default function StrobeTuner({ detectedCents, stableCents, isCapturing, i
           ⟳
         </button>
       </div>
+      )}
 
       {/* 안정 구간 시간 조절 */}
-      {onStableDurationChange && (
+      {onStableDurationChange && !hideReferenceControls && (
         <div className="px-3 pb-2 flex items-center gap-2">
           <span className="text-xs text-muted-foreground whitespace-nowrap">안정 대기</span>
           <input

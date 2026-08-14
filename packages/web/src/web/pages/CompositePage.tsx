@@ -16,6 +16,7 @@ import { useTuningSession } from "@/hooks/useTuningSession";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { PIANO_KEYS } from "@/hooks/usePitchDetector";
 import TuningCurveChart from "@/components/tuner/TuningCurveChart";
+import StrobeTuner from "@/components/tuner/StrobeTuner";
 import { exportToPdf, exportToImage } from "@/lib/tuner/exportPdf";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -310,6 +311,11 @@ export default function CompositePage() {
   const assignedValueLabel = hasNewAssignedCents
     ? "새 책정값"
     : isSelectedRegistered ? "이전 등록값" : latestRegisteredCents !== null ? "최근 등록값" : "책정 대기";
+  // 복합탭3은 동일 건반에서 이미 확정·등록한 센트값만 고정 스트로브 기준으로 사용한다.
+  // 다른 건반의 최근값을 기준으로 쓰면 스트로브 방향이 왜곡되므로 참조하지 않는다.
+  const composite3StrobeReferenceCents = isComposite3
+    ? displayedFinalCents ?? registeredCents
+    : null;
   const inTune    = displayedLiveCents !== null ? Math.abs(displayedLiveCents) <= 2 : false;
   const warnRange = displayedLiveCents !== null ? Math.abs(displayedLiveCents) <= 8 : false;
 
@@ -419,27 +425,50 @@ export default function CompositePage() {
             ? "border-precision/30"
             : "border-border"
         )}>
-          {/* cents 큰 숫자 */}
-          <div className="text-center mb-2">
-            <span
-              className={cn(
-                "text-6xl font-black tabular-nums transition-colors duration-100",
-                inTune    ? "text-in-tune"
-                : warnRange ? "text-warn"
-                : result    ? "text-off"
-                : "text-muted-foreground/25"
-              )}
-              style={{ fontFamily: "'JetBrains Mono', monospace" }}
-            >
-              {displayedLiveCents !== null
-                ? `${displayedLiveCents > 0 ? "+" : ""}${displayedLiveCents.toFixed(1)}`
-                : "0.0"}
-            </span>
-            <span className="text-xl text-muted-foreground ml-1">¢</span>
-          </div>
+          {isComposite3 ? (
+            <div className="mb-2">
+              <StrobeTuner
+                detectedCents={displayedLiveCents}
+                stableCents={null}
+                isCapturing={result?.isCapturing ?? false}
+                isActive={isListening && composite3StrobeReferenceCents !== null}
+                currentNote={`${targetKey.noteName}${targetKey.octave}`}
+                currentKeyIndex={seq.targetKeyIndex}
+                referenceCents={composite3StrobeReferenceCents}
+                referenceLabel="확정 기준"
+                hideReferenceControls
+              />
+              <p className="mt-2 text-center text-xs text-muted-foreground">
+                {composite3StrobeReferenceCents === null
+                  ? "이 건반을 먼저 확정하면, 다음 타건부터 확정값을 기준으로 스트로브가 흐릅니다."
+                  : "선이 멈추면 현재 타건값이 이 건반의 확정값과 일치합니다."}
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* cents 큰 숫자 */}
+              <div className="text-center mb-2">
+                <span
+                  className={cn(
+                    "text-6xl font-black tabular-nums transition-colors duration-100",
+                    inTune    ? "text-in-tune"
+                    : warnRange ? "text-warn"
+                    : result    ? "text-off"
+                    : "text-muted-foreground/25"
+                  )}
+                  style={{ fontFamily: "'JetBrains Mono', monospace" }}
+                >
+                  {displayedLiveCents !== null
+                    ? `${displayedLiveCents > 0 ? "+" : ""}${displayedLiveCents.toFixed(1)}`
+                    : "0.0"}
+                </span>
+                <span className="text-xl text-muted-foreground ml-1">¢</span>
+              </div>
 
-          {/* cents 바 */}
-          <CentsBar cents={displayedLiveCents ?? 0} />
+              {/* cents 바 */}
+              <CentsBar cents={displayedLiveCents ?? 0} />
+            </>
+          )}
 
           {/* 캡처 진행 */}
           {result?.isCapturing && (
