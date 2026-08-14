@@ -186,54 +186,26 @@ export default function Composite3Console({
           </div>
         </div>
 
-        <div className="grid gap-4 xl:grid-cols-[270px_minmax(0,1fr)_308px]">
-          <aside className="border border-white/10 bg-[#0a1319] p-4 xl:order-1">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
-              <div>
-                <p className="font-mono text-[10px] font-bold tracking-[0.2em] text-[#73f7cf]">ZONE SELECT</p>
-                <h2 className="mt-1 text-sm font-bold text-white">측정 음역</h2>
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_308px]">
+          <section className="border border-white/10 bg-[#0a1319] px-3 py-3 xl:col-span-2">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex items-center gap-3">
+                <span className="font-mono text-[10px] font-bold tracking-[0.18em] text-slate-500">RANGE</span>
+                <div className="flex gap-1.5">
+                  {(Object.keys(SECTION_META) as ManualSection[]).map((section) => {
+                    const meta = SECTION_META[section];
+                    const selected = seq.section === section;
+                    return <button key={section} onClick={() => seq.setSection(section)} className={cn("border px-3 py-2 font-mono text-[11px] font-bold transition-colors", selected ? "border-[#73f7cf]/60 bg-[#73f7cf]/10 text-[#73f7cf]" : "border-white/10 text-slate-500 hover:border-white/30 hover:text-slate-200")}>{meta.code} · {meta.range}</button>;
+                  })}
+                </div>
+                <span className="hidden text-xs text-slate-500 sm:inline">현재 {activeMeta.description}</span>
               </div>
-              <span className="font-mono text-xs text-slate-500">03</span>
+              <div className="flex flex-wrap items-center gap-2">
+                <select value={activeSessionId ?? ""} onChange={(event) => onSelectSession(event.target.value)} className="min-w-40 border border-white/10 bg-[#0d181f] px-3 py-2 text-xs text-slate-200 outline-none focus:border-[#73f7cf]/70"><option value="">세션 선택</option>{sessions.map((session) => <option key={session.id} value={session.id}>{session.name}</option>)}</select>
+                <button onClick={onCreateSession} className="border border-white/15 px-3 py-2 text-xs font-bold text-slate-300 transition-colors hover:border-[#73f7cf]/60 hover:text-[#73f7cf]">+ 새 세션</button>
+              </div>
             </div>
-            <div className="mt-3 grid gap-2 sm:grid-cols-3 xl:grid-cols-1">
-              {(Object.keys(SECTION_META) as ManualSection[]).map((section) => {
-                const meta = SECTION_META[section];
-                const selected = seq.section === section;
-                return (
-                  <button
-                    key={section}
-                    onClick={() => seq.setSection(section)}
-                    className={cn(
-                      "group flex items-center justify-between border px-3 py-3 text-left transition-all",
-                      selected ? "border-[#73f7cf]/70 bg-[#73f7cf]/10" : "border-white/10 bg-[#0d181f] hover:border-white/30"
-                    )}
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className={cn("grid h-8 w-8 place-items-center border font-mono text-sm font-black", selected ? "border-[#73f7cf]/60 text-[#73f7cf]" : "border-white/15 text-slate-500")}>{meta.code}</span>
-                      <div>
-                        <p className={cn("text-xs font-black tracking-[0.12em]", selected ? "text-white" : "text-slate-300")}>{meta.title}</p>
-                        <p className="mt-0.5 text-[11px] text-slate-500">{meta.description}</p>
-                      </div>
-                    </div>
-                    <span className={cn("font-mono text-xs", selected ? "text-[#73f7cf]" : "text-slate-500")}>{meta.range}</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="mt-5 border-t border-white/10 pt-4">
-              <p className="font-mono text-[10px] font-bold tracking-[0.2em] text-slate-500">SESSION</p>
-              <select
-                value={activeSessionId ?? ""}
-                onChange={(event) => onSelectSession(event.target.value)}
-                className="mt-2 w-full border border-white/10 bg-[#0d181f] px-3 py-2.5 text-xs text-slate-200 outline-none focus:border-[#73f7cf]/70"
-              >
-                <option value="">세션 선택</option>
-                {sessions.map((session) => <option key={session.id} value={session.id}>{session.name}</option>)}
-              </select>
-              <button onClick={onCreateSession} className="mt-2 w-full border border-white/15 px-3 py-2.5 text-xs font-bold text-slate-300 transition-colors hover:border-[#73f7cf]/60 hover:text-[#73f7cf]">+ 새 측정 세션</button>
-            </div>
-          </aside>
+          </section>
 
           <section className="relative overflow-hidden border border-white/10 bg-[#0a1319] xl:order-2">
             <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#73f7cf] to-transparent" />
@@ -245,9 +217,16 @@ export default function Composite3Console({
               <span className={cn("border px-2 py-1 font-mono text-[10px] font-bold", isMeasured ? "border-[#73f7cf]/30 text-[#73f7cf]" : "border-white/10 text-slate-500")}>{isMeasured ? "RECORDED" : "UNSAVED"}</span>
             </div>
 
-            <div className="flex min-h-[330px] flex-col items-center justify-center px-5 py-8 text-center sm:min-h-[390px]">
-              <p className="font-mono text-[11px] font-bold tracking-[0.28em] text-slate-500">KEY {String(targetKey.keyNumber).padStart(2, "0")} · {targetKey.noteName}{targetKey.octave}</p>
-              <div className="mt-4 flex items-start justify-center">
+            <div className="flex min-h-[390px] flex-col items-center justify-center px-5 py-8 text-center sm:min-h-[470px]">
+              <p className="font-mono text-[10px] font-bold tracking-[0.28em] text-[#73f7cf]">CURRENT TUNING TARGET</p>
+              <div className="mt-2 flex items-end justify-center gap-3">
+                <span className="font-mono text-6xl font-black tracking-[-0.08em] text-white sm:text-7xl">{targetKey.noteName}<sup className="ml-1 text-3xl text-[#73f7cf] sm:text-4xl">{targetKey.octave}</sup></span>
+                <span className="mb-2 border border-white/15 px-2 py-1 font-mono text-xs text-slate-400">KEY {String(targetKey.keyNumber).padStart(2, "0")}</span>
+              </div>
+              <p className="mt-2 text-xs text-slate-500">지금 책정할 건반 · 기준 {targetKey.freq.toFixed(2)} Hz</p>
+              <div className="my-6 h-px w-full max-w-xl bg-white/10" />
+              <p className="font-mono text-[10px] font-bold tracking-[0.22em] text-slate-500">LIVE CENTS</p>
+              <div className="mt-3 flex items-start justify-center">
                 <span className={cn("font-mono text-[clamp(5rem,15vw,11rem)] font-black leading-none tracking-[-0.1em]", centsTone(displayedLiveCents))}>{displayedLiveCents === null ? "0.0" : `${displayedLiveCents > 0 ? "+" : ""}${displayedLiveCents.toFixed(1)}`}</span>
                 <span className="mt-2 ml-3 font-mono text-2xl text-slate-500 sm:text-3xl">¢</span>
               </div>
@@ -292,11 +271,11 @@ export default function Composite3Console({
               <div className="mt-4 flex items-end justify-between gap-3">
                 <div>
                   <p className="text-xs text-slate-500">{displayedMeasurementKey.keyNumber}번 {displayedMeasurementKey.noteName}{displayedMeasurementKey.octave}</p>
-                  <p className="mt-1 text-sm font-bold text-white">{assignedValueLabel}</p>
+                  <p className="mt-1 text-sm font-bold text-white">확정 센트값 · {assignedValueLabel}</p>
                 </div>
-                <p className={cn("font-mono text-3xl font-black", centsTone(currentAssignedCents))}>{formatCents(currentAssignedCents)}</p>
+                <p className={cn("font-mono text-5xl font-black tracking-[-0.08em]", centsTone(currentAssignedCents))}>{formatCents(currentAssignedCents)}</p>
               </div>
-              <div className="mt-4 border-t border-white/10 pt-3 text-xs text-slate-500">그래프와 건반별 기록표에 반영되는 최종값입니다.</div>
+              <div className="mt-4 border-t border-white/10 pt-3 text-xs text-slate-500">확정된 최종값은 그래프와 건반별 기록표에 반영됩니다.</div>
             </section>
 
             <section className="border border-white/10 bg-[#0a1319] p-4">
@@ -335,11 +314,11 @@ export default function Composite3Console({
 
         {error && <div className="mt-4 border border-[#fb7a8a]/40 bg-[#fb7a8a]/10 px-4 py-3 text-sm text-[#ffabb6]">{error}</div>}
 
-        <section className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_350px]">
-          <div className="border border-white/10 bg-[#0a1319] p-4">
+        <section className="mt-4 grid grid-cols-1 gap-4">
+          <div className="border border-[#73f7cf]/25 bg-[#0a1319] p-5 shadow-[0_0_0_1px_rgba(115,247,207,0.04)]">
             <div className="mb-4 flex items-center justify-between">
-              <div><p className="font-mono text-[10px] font-bold tracking-[0.2em] text-[#73f7cf]">TUNING MAP</p><p className="mt-1 text-xs text-slate-500">88건반 조율 곡선 · 휠로 확대, 드래그로 이동</p></div>
-              <span className="font-mono text-xs text-slate-500">{measuredCount}/88</span>
+              <div><p className="font-mono text-xs font-black tracking-[0.22em] text-[#73f7cf]">TUNING MAP · PRIMARY</p><p className="mt-1 text-sm text-slate-400">조율 그래프 — 현재 건반과 전체 흐름을 확인하세요.</p></div>
+              <span className="border border-[#73f7cf]/30 bg-[#73f7cf]/10 px-3 py-1.5 font-mono text-sm font-black text-[#73f7cf]">{measuredCount}/88</span>
             </div>
             <div className="border border-white/10 bg-white"><TuningCurveChart data={chartData} activeKeyIndex={seq.targetKeyIndex} /></div>
           </div>
