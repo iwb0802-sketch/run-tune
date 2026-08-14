@@ -277,6 +277,10 @@ export default function CompositePage() {
   const displayedFinalCents = isComposite2SmoothedGraphRange
     ? smoothedGraphFinalCents
     : result?.finalCents ?? null;
+  // 새 타건이 확정되기 전에는 세션에 등록되어 있던 해당 건반의 값을 계속 보여준다.
+  const registeredCents = chartData[seq.targetKeyIndex]?.cents ?? null;
+  const currentAssignedCents = displayedFinalCents ?? registeredCents;
+  const hasNewAssignedCents = displayedFinalCents !== null;
   const inTune    = displayedLiveCents !== null ? Math.abs(displayedLiveCents) <= 2 : false;
   const warnRange = displayedLiveCents !== null ? Math.abs(displayedLiveCents) <= 8 : false;
 
@@ -339,7 +343,7 @@ export default function CompositePage() {
         {isComposite2 && (
           <div className={cn(
             "bg-card border rounded-xl px-4 py-3 shadow-sm flex items-center justify-between",
-            displayedFinalCents !== null ? "border-in-tune/60 bg-in-tune/5" : "border-border"
+            currentAssignedCents !== null ? "border-in-tune/60 bg-in-tune/5" : "border-border"
           )}>
             <div>
               <p className="text-xs font-semibold text-muted-foreground">현재 책정된 센트값</p>
@@ -347,12 +351,12 @@ export default function CompositePage() {
             </div>
             <div className={cn(
               "text-3xl font-black tabular-nums",
-              displayedFinalCents === null ? "text-muted-foreground/30"
-                : Math.abs(displayedFinalCents) <= 2 ? "text-in-tune"
-                : Math.abs(displayedFinalCents) <= 8 ? "text-warn"
+              currentAssignedCents === null ? "text-muted-foreground/30"
+                : Math.abs(currentAssignedCents) <= 2 ? "text-in-tune"
+                : Math.abs(currentAssignedCents) <= 8 ? "text-warn"
                 : "text-off"
             )} style={{ fontFamily: "'JetBrains Mono', monospace" }}>
-              {displayedFinalCents === null ? "—" : `${displayedFinalCents > 0 ? "+" : ""}${displayedFinalCents.toFixed(1)}¢`}
+              {currentAssignedCents === null ? "—" : `${currentAssignedCents > 0 ? "+" : ""}${currentAssignedCents.toFixed(1)}¢`}
             </div>
           </div>
         )}
@@ -555,12 +559,15 @@ export default function CompositePage() {
                   <span className="font-semibold text-foreground/85">현재 {targetKey.keyNumber}번 {targetKey.noteName}{targetKey.octave}</span>
                   <span className={cn(
                     "font-black tabular-nums",
-                    displayedFinalCents === null ? "text-muted-foreground/50"
-                      : Math.abs(displayedFinalCents) <= 2 ? "text-in-tune"
-                      : Math.abs(displayedFinalCents) <= 8 ? "text-warn"
+                    currentAssignedCents === null ? "text-muted-foreground/50"
+                      : Math.abs(currentAssignedCents) <= 2 ? "text-in-tune"
+                      : Math.abs(currentAssignedCents) <= 8 ? "text-warn"
                       : "text-off"
                   )}>
-                    {displayedFinalCents === null ? "책정 대기" : `${displayedFinalCents > 0 ? "+" : ""}${displayedFinalCents.toFixed(1)}¢`}
+                    {currentAssignedCents === null
+                      ? "책정 대기"
+                      : `${currentAssignedCents > 0 ? "+" : ""}${currentAssignedCents.toFixed(1)}¢`}
+                    {!hasNewAssignedCents && currentAssignedCents !== null && " · 이전 등록값"}
                   </span>
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">그래프에 기록된 측정값 · {centsTableRows.length}건반</p>
