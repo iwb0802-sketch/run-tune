@@ -133,18 +133,28 @@ export default function CompositePage() {
     return null;
   }, [createSession]);
 
+  // 1-indexed 64번 C6은 keyIndex 63이다. 이 구간은 복합탭2 상부 스무딩값을 그래프 저장값으로 쓴다.
+  const SMOOTHED_GRAPH_START_KEY = 63;
+  const smoothedUpperCentsRef = useRef<number | null>(null);
+
   const handleConfirmed = useCallback(async (r: typeof result) => {
     if (!r || r.finalCents === null) return;
+    const useSmoothedGraphValue = isComposite2 && r.keyIndex >= SMOOTHED_GRAPH_START_KEY;
+    // 확정 순간 사용자에게 보이던 200ms 스무딩값을 우선 저장해 그래프와 표시값을 일치시킨다.
+    const confirmedCents = useSmoothedGraphValue && smoothedUpperCentsRef.current !== null
+      ? smoothedUpperCentsRef.current
+      : r.finalCents;
+
     await ensureSession();
-    recordMeasurement(r.keyIndex, r.finalCents, r.frequency);
+    recordMeasurement(r.keyIndex, confirmedCents, r.frequency);
     toast.success(
-      `${r.noteName}${r.octave} (건반 ${r.keyIndex + 1}) → ${r.finalCents > 0 ? "+" : ""}${r.finalCents.toFixed(1)}¢`,
+      `${r.noteName}${r.octave} (건반 ${r.keyIndex + 1}) → ${confirmedCents > 0 ? "+" : ""}${confirmedCents.toFixed(1)}¢`,
       { duration: 1800 }
     );
     if (autoAdvanceRef.current) {
       advanceTimerRef.current = setTimeout(() => { seqNextRef.current(); }, 1000);
     }
-  }, [ensureSession, recordMeasurement]);
+  }, [ensureSession, isComposite2, recordMeasurement]);
 
   const { isListening, result, startListening, stopListening, error } =
     useCompositeTuner(seq.targetKeyIndex, handleConfirmed, 4096);
@@ -174,6 +184,7 @@ export default function CompositePage() {
   useEffect(() => {
     if (!isComposite2Upper || !isListening) {
       smoothWindowRef.current = [];
+      smoothedUpperCentsRef.current = null;
       setSmoothedUpperCents(null);
       return;
     }
@@ -184,17 +195,26 @@ export default function CompositePage() {
     smoothWindowRef.current.push({ t: now, cents: rawLiveCents });
     smoothWindowRef.current = smoothWindowRef.current.filter((sample) => now - sample.t <= 200);
     const smoothed = Math.round(centsMedian(smoothWindowRef.current.map((sample) => sample.cents)) * 10) / 10;
-    if (Number.isFinite(smoothed)) setSmoothedUpperCents(smoothed);
+    if (Number.isFinite(smoothed)) {
+      smoothedUpperCentsRef.current = smoothed;
+      setSmoothedUpperCents(smoothed);
+    }
   }, [isComposite2Upper, isListening, rawLiveCents]);
 
   useEffect(() => {
     smoothWindowRef.current = [];
+    smoothedUpperCentsRef.current = null;
     setSmoothedUpperCents(null);
   }, [seq.targetKeyIndex]);
 
   const displayedLiveCents = isComposite2Upper
     ? smoothedUpperCents ?? rawLiveCents
     : rawLiveCents;
+  const displayedFinalCents = result?.finalCents === null || result?.finalCents === undefined
+    ? null
+    : isComposite2 && result.keyIndex >= SMOOTHED_GRAPH_START_KEY
+      ? smoothedUpperCents ?? result.finalCents
+      : result.finalCents;
   const inTune    = displayedLiveCents !== null ? Math.abs(displayedLiveCents) <= 2 : false;
   const warnRange = displayedLiveCents !== null ? Math.abs(displayedLiveCents) <= 8 : false;
 
@@ -300,10 +320,10 @@ export default function CompositePage() {
           )}
 
           {/* 확정 */}
-          {result?.finalCents !== null && result?.finalCents !== undefined && (
+          {displayedFinalCents !== null && (
             <div className="mt-2 text-center">
               <span className="text-sm font-bold text-in-tune bg-in-tune/10 px-3 py-1 rounded-full">
-                ✓ 확정 {result.finalCents > 0 ? "+" : ""}{result.finalCents.toFixed(1)}¢
+                ✓ 확정 {displayedFinalCents > 0 ? "+" : ""}{displayedFinalCents.toFixed(1)}¢
               </span>
             </div>
           )}
