@@ -16,7 +16,6 @@ import { useTuningSession } from "@/hooks/useTuningSession";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { PIANO_KEYS } from "@/hooks/usePitchDetector";
 import TuningCurveChart from "@/components/tuner/TuningCurveChart";
-import StrobeTuner from "@/components/tuner/StrobeTuner";
 import { exportToPdf, exportToImage } from "@/lib/tuner/exportPdf";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -311,11 +310,6 @@ export default function CompositePage() {
   const assignedValueLabel = hasNewAssignedCents
     ? "새 책정값"
     : isSelectedRegistered ? "이전 등록값" : latestRegisteredCents !== null ? "최근 등록값" : "책정 대기";
-  // 복합탭3은 동일 건반에서 이미 확정·등록한 센트값만 고정 스트로브 기준으로 사용한다.
-  // 다른 건반의 최근값을 기준으로 쓰면 스트로브 방향이 왜곡되므로 참조하지 않는다.
-  const composite3StrobeReferenceCents = isComposite3
-    ? displayedFinalCents ?? registeredCents
-    : null;
   const inTune    = displayedLiveCents !== null ? Math.abs(displayedLiveCents) <= 2 : false;
   const warnRange = displayedLiveCents !== null ? Math.abs(displayedLiveCents) <= 8 : false;
 
@@ -339,10 +333,18 @@ export default function CompositePage() {
     : [];
 
   return (
-    <div className="min-h-screen bg-muted/50 flex flex-col" style={{ fontFamily: "'Noto Sans KR', sans-serif" }}>
+    <div className={cn(
+      "min-h-screen flex flex-col",
+      isComposite3 ? "bg-[#f3f8f7]" : "bg-muted/50"
+    )} style={{ fontFamily: "'Noto Sans KR', sans-serif" }}>
 
       {/* 헤더 */}
-      <header className="bg-card border-b border-border px-4 py-3 flex items-center justify-between shadow-sm">
+      <header className={cn(
+        "border-b px-4 py-3 shadow-sm",
+        isComposite3
+          ? "bg-[#0c1d26] border-[#1b3944] text-white"
+          : "bg-card border-border"
+      )}>
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 bg-precision rounded-lg flex items-center justify-center">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2">
@@ -352,35 +354,70 @@ export default function CompositePage() {
             </svg>
           </div>
           <div>
-            <h1 className="text-base font-bold text-foreground leading-tight">{isComposite3 ? "복합 조율 3" : isComposite2 ? "복합 조율 2" : "복합 조율"}</h1>
-            <p className="text-xs text-muted-foreground/80">YIN · Goertzel 교차검증 · 스트로브 확정</p>
+            <div className="flex items-center gap-2">
+              <h1 className={cn("text-base font-bold leading-tight", isComposite3 ? "text-white" : "text-foreground")}>{isComposite3 ? "복합 조율 3" : isComposite2 ? "복합 조율 2" : "복합 조율"}</h1>
+              {isComposite3 && <span className="rounded-full bg-[#37d2b0]/15 px-2 py-0.5 text-[10px] font-black tracking-[0.14em] text-[#7cf0d6]">PRECISION</span>}
+            </div>
+            <p className={cn("text-xs", isComposite3 ? "text-slate-300" : "text-muted-foreground/80")}>A·B 교차검증 · 안정 구간 확정</p>
           </div>
         </div>
-        <nav className="flex items-center gap-1 bg-muted rounded-lg p-0.5">
-          <Link to="/"       className="px-3 py-1 text-xs font-medium rounded-md text-muted-foreground hover:text-foreground transition-colors">자동</Link>
-          <Link to="/manual" className="px-3 py-1 text-xs font-medium rounded-md text-muted-foreground hover:text-foreground transition-colors">수동</Link>
+        <nav className={cn(
+          "mt-3 flex max-w-full items-center gap-1 overflow-x-auto rounded-lg p-0.5 sm:mt-0",
+          isComposite3 ? "bg-white/10" : "bg-muted"
+        )}>
+          <Link to="/"       className={cn("shrink-0 px-3 py-1 text-xs font-medium rounded-md transition-colors", isComposite3 ? "text-slate-300 hover:text-white" : "text-muted-foreground hover:text-foreground")}>자동</Link>
+          <Link to="/manual" className={cn("shrink-0 px-3 py-1 text-xs font-medium rounded-md transition-colors", isComposite3 ? "text-slate-300 hover:text-white" : "text-muted-foreground hover:text-foreground")}>수동</Link>
           {isComposite2 ? (
-            <Link to="/composite" className="px-3 py-1 text-xs font-medium rounded-md text-muted-foreground hover:text-foreground transition-colors">복합</Link>
+            <Link to="/composite" className={cn("shrink-0 px-3 py-1 text-xs font-medium rounded-md transition-colors", isComposite3 ? "text-slate-300 hover:text-white" : "text-muted-foreground hover:text-foreground")}>복합</Link>
           ) : (
             <span className="px-3 py-1 text-xs font-bold rounded-md bg-card text-precision shadow-sm">복합</span>
           )}
           {location === "/composite2" ? (
             <span className="px-3 py-1 text-xs font-bold rounded-md bg-card text-precision shadow-sm">복합2</span>
           ) : (
-            <Link to="/composite2" className="px-3 py-1 text-xs font-medium rounded-md text-muted-foreground hover:text-foreground transition-colors">복합2</Link>
+            <Link to="/composite2" className={cn("shrink-0 px-3 py-1 text-xs font-medium rounded-md transition-colors", isComposite3 ? "text-slate-300 hover:text-white" : "text-muted-foreground hover:text-foreground")}>복합2</Link>
           )}
           {isComposite3 ? (
-            <span className="px-3 py-1 text-xs font-bold rounded-md bg-card text-precision shadow-sm">복합3</span>
+            <span className="shrink-0 px-3 py-1 text-xs font-bold rounded-md bg-[#37d2b0] text-[#08232a] shadow-sm">복합3</span>
           ) : (
-            <Link to="/composite3" className="px-3 py-1 text-xs font-medium rounded-md text-muted-foreground hover:text-foreground transition-colors">복합3</Link>
+            <Link to="/composite3" className="shrink-0 px-3 py-1 text-xs font-medium rounded-md text-muted-foreground hover:text-foreground transition-colors">복합3</Link>
           )}
-          <Link to="/reference" className="px-3 py-1 text-xs font-medium rounded-md text-muted-foreground hover:text-foreground transition-colors">기준음</Link>
+          <Link to="/reference" className={cn("shrink-0 px-3 py-1 text-xs font-medium rounded-md transition-colors", isComposite3 ? "text-slate-300 hover:text-white" : "text-muted-foreground hover:text-foreground")}>기준음</Link>
         </nav>
       </header>
 
-      <main className="flex-1 container max-w-3xl mx-auto px-4 py-4 flex flex-col gap-3">
+      <main className={cn(
+        "flex-1 container mx-auto px-4 py-4 flex flex-col",
+        isComposite3 ? "max-w-5xl gap-4 pb-8" : "max-w-3xl gap-3"
+      )}>
 
-        {isComposite2 && (
+        {isComposite3 && (
+          <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#0d2731] via-[#123843] to-[#176153] px-5 py-5 text-white shadow-[0_18px_48px_rgba(13,39,49,0.20)]">
+            <div className="absolute -right-16 -top-20 h-56 w-56 rounded-full bg-[#48e2bf]/15 blur-3xl" />
+            <div className="relative grid gap-5 md:grid-cols-[1.35fr_0.85fr] md:items-end">
+              <div>
+                <div className="mb-3 flex items-center gap-2 text-[11px] font-bold tracking-[0.14em] text-[#96f5df]">
+                  <span className={cn("h-2 w-2 rounded-full", isListening ? "bg-[#65f0c9] shadow-[0_0_0_5px_rgba(101,240,201,0.15)]" : "bg-slate-400")} />
+                  {isListening ? "LIVE MEASUREMENT" : "PRECISION WORKSPACE"}
+                </div>
+                <h2 className="text-2xl font-black tracking-tight sm:text-3xl">한 음씩, 확실하게 기록하는<br className="hidden sm:block" /> 정밀 조율 워크스페이스</h2>
+                <p className="mt-2 max-w-xl text-sm leading-6 text-slate-200">A·B 교차검증과 구간별 안정화 규칙으로 측정값을 선별합니다. 현재 음의 실시간 편차와 확정된 기록값을 한 화면에서 확인하세요.</p>
+              </div>
+              <div className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 backdrop-blur-sm">
+                <p className="text-[11px] font-bold tracking-[0.12em] text-[#a8f6e3]">CURRENT ASSIGNMENT</p>
+                <div className="mt-1 flex items-end justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold">{displayedMeasurementKey.keyNumber}번 {displayedMeasurementKey.noteName}{displayedMeasurementKey.octave}</p>
+                    <p className="mt-0.5 text-xs text-slate-300">{assignedValueLabel}</p>
+                  </div>
+                  <p className="font-mono text-3xl font-black tabular-nums text-[#88f3d7]">{currentAssignedCents === null ? "—" : `${currentAssignedCents > 0 ? "+" : ""}${currentAssignedCents.toFixed(1)}¢`}</p>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {isComposite2 && !isComposite3 && (
           <div className={cn(
             "bg-card border rounded-xl px-4 py-3 shadow-sm flex items-center justify-between",
             currentAssignedCents !== null ? "border-in-tune/60 bg-in-tune/5" : "border-border"
@@ -402,73 +439,74 @@ export default function CompositePage() {
         )}
 
         {/* 구간 탭 */}
-        <SectionTabs section={seq.section} onChange={seq.setSection} />
+        <section className={cn(isComposite3 && "rounded-2xl border border-[#dcebe7] bg-white p-3 shadow-sm")}>
+          {isComposite3 && <p className="mb-2 px-1 text-[11px] font-black tracking-[0.12em] text-[#168d79]">01 · MEASUREMENT RANGE</p>}
+          <SectionTabs section={seq.section} onChange={seq.setSection} />
+        </section>
 
         {/* 목표 건반 바 */}
-        <TargetNoteBar
-          keyIndex={seq.targetKeyIndex}
-          indexInOrder={seq.indexInOrder}
-          total={seq.total}
-          canPrev={seq.canPrev}
-          canNext={seq.canNext}
-          onPrev={seq.prev}
-          onNext={seq.next}
-          isMeasured={isMeasured}
-        />
+        <section className={cn(isComposite3 && "rounded-2xl border border-[#dcebe7] bg-white p-3 shadow-sm")}>
+          {isComposite3 && <div className="mb-2 flex items-center justify-between px-1"><p className="text-[11px] font-black tracking-[0.12em] text-[#168d79]">02 · TARGET NOTE</p><p className="text-xs font-semibold text-muted-foreground">진행 {seq.indexInOrder + 1} / {seq.total}</p></div>}
+          <TargetNoteBar
+            keyIndex={seq.targetKeyIndex}
+            indexInOrder={seq.indexInOrder}
+            total={seq.total}
+            canPrev={seq.canPrev}
+            canNext={seq.canNext}
+            onPrev={seq.prev}
+            onNext={seq.next}
+            isMeasured={isMeasured}
+          />
+        </section>
 
         {/* 메인 피치 표시 */}
         <div className={cn(
-          "bg-card border rounded-xl px-5 py-4 shadow-sm transition-colors",
+          isComposite3
+            ? "bg-white border-[#cfe4dd] rounded-2xl px-5 py-5 shadow-[0_12px_28px_rgba(17,59,54,0.08)] transition-colors"
+            : "bg-card border rounded-xl px-5 py-4 shadow-sm transition-colors",
           result?.finalCents !== null && result?.finalCents !== undefined
             ? "border-in-tune/60 bg-in-tune/5"
             : result?.crossValid
             ? "border-precision/30"
             : "border-border"
         )}>
-          {isComposite3 ? (
-            <div className="mb-2">
-              <StrobeTuner
-                detectedCents={displayedLiveCents}
-                stableCents={null}
-                isCapturing={result?.isCapturing ?? false}
-                isActive={isListening && composite3StrobeReferenceCents !== null}
-                currentNote={`${targetKey.noteName}${targetKey.octave}`}
-                currentKeyIndex={seq.targetKeyIndex}
-                referenceCents={composite3StrobeReferenceCents}
-                referenceLabel="확정 기준"
-                hideReferenceControls
-              />
-              <p className="mt-2 text-center text-xs text-muted-foreground">
-                {composite3StrobeReferenceCents === null
-                  ? "이 건반을 먼저 확정하면, 다음 타건부터 확정값을 기준으로 스트로브가 흐릅니다."
-                  : "선이 멈추면 현재 타건값이 이 건반의 확정값과 일치합니다."}
-              </p>
-            </div>
-          ) : (
-            <>
-              {/* cents 큰 숫자 */}
-              <div className="text-center mb-2">
-                <span
-                  className={cn(
-                    "text-6xl font-black tabular-nums transition-colors duration-100",
-                    inTune    ? "text-in-tune"
-                    : warnRange ? "text-warn"
-                    : result    ? "text-off"
-                    : "text-muted-foreground/25"
-                  )}
-                  style={{ fontFamily: "'JetBrains Mono', monospace" }}
-                >
-                  {displayedLiveCents !== null
-                    ? `${displayedLiveCents > 0 ? "+" : ""}${displayedLiveCents.toFixed(1)}`
-                    : "0.0"}
-                </span>
-                <span className="text-xl text-muted-foreground ml-1">¢</span>
+          {isComposite3 && (
+            <div className="mb-3 flex items-center justify-between border-b border-[#dbece7] pb-3">
+              <div>
+                <p className="text-[11px] font-black tracking-[0.12em] text-[#168d79]">03 · LIVE CENTS</p>
+                <p className="mt-1 text-xs text-muted-foreground">현재 타건의 실시간 편차</p>
               </div>
-
-              {/* cents 바 */}
-              <CentsBar cents={displayedLiveCents ?? 0} />
-            </>
+              <span className={cn(
+                "rounded-full px-2.5 py-1 text-xs font-bold",
+                !isListening ? "bg-muted text-muted-foreground"
+                  : result?.crossValid ? "bg-[#dcf8f0] text-[#0d816d]"
+                  : "bg-[#fff5db] text-[#b77913]"
+              )}>{!isListening ? "마이크 대기" : result?.crossValid ? "A·B 검증 완료" : "신호 분석 중"}</span>
+            </div>
           )}
+          {/* cents 큰 숫자 */}
+          <div className={cn("text-center", isComposite3 ? "mb-3 py-1" : "mb-2")}>
+            <span
+              className={cn(
+                isComposite3 ? "text-7xl sm:text-8xl" : "text-6xl",
+                "font-black tabular-nums transition-colors duration-100",
+                inTune    ? "text-in-tune"
+                : warnRange ? "text-warn"
+                : result    ? "text-off"
+                : "text-muted-foreground/25"
+              )}
+              style={{ fontFamily: "'JetBrains Mono', monospace" }}
+            >
+              {displayedLiveCents !== null
+                ? `${displayedLiveCents > 0 ? "+" : ""}${displayedLiveCents.toFixed(1)}`
+                : "0.0"}
+            </span>
+            <span className={cn("text-muted-foreground ml-1", isComposite3 ? "text-2xl" : "text-xl")}>¢</span>
+          </div>
+
+          {/* cents 바 */}
+          <CentsBar cents={displayedLiveCents ?? 0} />
+          {isComposite3 && <div className="mt-2 flex justify-between text-[11px] font-semibold text-muted-foreground"><span>−50¢</span><span className="text-[#168d79]">목표 0¢</span><span>+50¢</span></div>}
 
           {/* 캡처 진행 */}
           {result?.isCapturing && (
@@ -559,7 +597,7 @@ export default function CompositePage() {
         </div>
 
         {/* 마이크 + 자동진행 */}
-        <div className="order-2 flex items-center gap-2">
+        <div className={cn("order-2 flex items-center gap-2", isComposite3 && "rounded-2xl border border-[#dcebe7] bg-white p-3 shadow-sm")}>
           <button
             onClick={isPro ? toggleListening : undefined}
             disabled={!isPro}
@@ -571,13 +609,13 @@ export default function CompositePage() {
                 ? "bg-muted text-muted-foreground cursor-not-allowed opacity-60"
                 : isListening
                 ? "bg-off text-white hover:bg-off/90"
-                : "bg-precision text-white hover:bg-precision/90"
+                : isComposite3 ? "bg-[#0d2731] text-white hover:bg-[#164552]" : "bg-precision text-white hover:bg-precision/90"
             )}
           >
             {!isPro ? "🔒 마이크 켜기"
-              : isListening ? "■ 마이크 끄기" : "● 마이크 켜기"}
+              : isListening ? "■ 마이크 끄기" : isComposite3 ? "● 정밀 측정 시작" : "● 마이크 켜기"}
           </button>
-          <label className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-card border border-border cursor-pointer">
+          <label className={cn("flex items-center gap-2 px-3 py-2.5 rounded-xl border cursor-pointer", isComposite3 ? "bg-[#f5fbf9] border-[#cfe4dd]" : "bg-card border-border")}>
             <input
               type="checkbox"
               checked={autoAdvance}
@@ -614,10 +652,10 @@ export default function CompositePage() {
         </div>
 
         {isComposite2 && (
-          <div className="order-1 bg-card border border-border rounded-xl shadow-sm overflow-hidden">
+          <div className={cn("order-1 bg-card border rounded-xl shadow-sm overflow-hidden", isComposite3 && "rounded-2xl border-[#cfe4dd] shadow-[0_12px_28px_rgba(17,59,54,0.08)]")}>
             <div className="flex items-center justify-between gap-3 px-4 py-3">
               <div>
-                <h3 className="text-sm font-semibold text-foreground">건반별 센트값</h3>
+                <div className="flex items-center gap-2"><h3 className="text-sm font-semibold text-foreground">건반별 센트값</h3>{isComposite3 && <span className="rounded-full bg-[#dcf8f0] px-2 py-0.5 text-[10px] font-bold text-[#0d816d]">기록 관리</span>}</div>
                 <div className="mt-1 flex items-center gap-2 text-xs">
                   <span className="font-semibold text-foreground/85">{assignedValueLabel === "최근 등록값" ? "최근" : "현재"} {displayedMeasurementKey.keyNumber}번 {displayedMeasurementKey.noteName}{displayedMeasurementKey.octave}</span>
                   <span className={cn(
@@ -638,7 +676,7 @@ export default function CompositePage() {
               {centsTableRows.length > 0 && (
                 <button
                   onClick={() => setShowCentsTable((open) => !open)}
-                  className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-precision bg-precision/10 border border-precision/20 hover:bg-precision/15 transition-colors"
+                  className={cn("shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors", isComposite3 ? "text-[#0d816d] bg-[#dcf8f0] border-[#b5edde] hover:bg-[#c9f3e7]" : "text-precision bg-precision/10 border-precision/20 hover:bg-precision/15")}
                 >
                   {showCentsTable ? "전체표 접기" : "전체표 펼치기"}
                   <span className={cn("transition-transform", showCentsTable && "rotate-180")}>⌄</span>
