@@ -277,18 +277,37 @@ export default function CompositePage() {
   const displayedFinalCents = isComposite2SmoothedGraphRange
     ? smoothedGraphFinalCents
     : result?.finalCents ?? null;
-  // 새 타건이 확정되기 전에는 차트의 파생값이 아니라 세션에 저장된 해당 건반의 실제 등록값을 직접 읽는다.
-  // cents가 정확히 0인 정상 측정값도 존재하므로 0을 '값 없음'으로 취급하지 않는다.
-  const selectedMeasurement = activeSession?.measurements[seq.targetKeyIndex];
-  const registeredCents = selectedMeasurement
-    ? selectedMeasurement.strobeCents
-      ?? selectedMeasurement.strobe1
-      ?? selectedMeasurement.autoCentsRef
-      ?? selectedMeasurement.baseline?.cents
-      ?? selectedMeasurement.cents
+  // 새 타건이 확정되기 전에는 차트의 파생값이 아니라 세션에 저장된 실제 등록값을 직접 읽는다.
+  // 구버전 세션은 객체 키가 0-기반 keyIndex 또는 1-기반 keyNumber로 남아 있을 수 있어 모두 호환한다.
+  const allMeasurements = Object.values(activeSession?.measurements ?? {});
+  const selectedMeasurement = activeSession?.measurements[seq.targetKeyIndex]
+    ?? activeSession?.measurements[targetKey.keyNumber]
+    ?? allMeasurements.find((measurement) =>
+      measurement.keyIndex === seq.targetKeyIndex || measurement.keyIndex === targetKey.keyNumber
+    );
+  const storedCents = (measurement: typeof selectedMeasurement) => measurement
+    ? measurement.strobeCents
+      ?? measurement.strobe1
+      ?? measurement.autoCentsRef
+      ?? measurement.baseline?.cents
+      ?? measurement.cents
     : null;
-  const currentAssignedCents = displayedFinalCents ?? registeredCents;
+  const registeredCents = storedCents(selectedMeasurement);
+  // 선택 건반에 아직 값이 없을 때는 가장 최근 등록값을 보여 주되, 음 이름도 함께 맞춰 표시한다.
+  const latestMeasurement = allMeasurements.reduce<typeof selectedMeasurement>((latest, measurement) =>
+    !latest || measurement.measuredAt > latest.measuredAt ? measurement : latest,
+    undefined,
+  );
+  const latestRegisteredCents = storedCents(latestMeasurement);
+  const currentAssignedCents = displayedFinalCents ?? registeredCents ?? latestRegisteredCents;
   const hasNewAssignedCents = displayedFinalCents !== null;
+  const isSelectedRegistered = registeredCents !== null;
+  const displayedMeasurementKey = hasNewAssignedCents || isSelectedRegistered
+    ? targetKey
+    : latestMeasurement ? PIANO_KEYS[latestMeasurement.keyIndex] ?? targetKey : targetKey;
+  const assignedValueLabel = hasNewAssignedCents
+    ? "새 책정값"
+    : isSelectedRegistered ? "이전 등록값" : latestRegisteredCents !== null ? "최근 등록값" : "책정 대기";
   const inTune    = displayedLiveCents !== null ? Math.abs(displayedLiveCents) <= 2 : false;
   const warnRange = displayedLiveCents !== null ? Math.abs(displayedLiveCents) <= 8 : false;
 
@@ -564,7 +583,7 @@ export default function CompositePage() {
               <div>
                 <h3 className="text-sm font-semibold text-foreground">건반별 센트값</h3>
                 <div className="mt-1 flex items-center gap-2 text-xs">
-                  <span className="font-semibold text-foreground/85">현재 {targetKey.keyNumber}번 {targetKey.noteName}{targetKey.octave}</span>
+                  <span className="font-semibold text-foreground/85">{assignedValueLabel === "최근 등록값" ? "최근" : "현재"} {displayedMeasurementKey.keyNumber}번 {displayedMeasurementKey.noteName}{displayedMeasurementKey.octave}</span>
                   <span className={cn(
                     "font-black tabular-nums",
                     currentAssignedCents === null ? "text-muted-foreground/50"
@@ -575,7 +594,7 @@ export default function CompositePage() {
                     {currentAssignedCents === null
                       ? "책정 대기"
                       : `${currentAssignedCents > 0 ? "+" : ""}${currentAssignedCents.toFixed(1)}¢`}
-                    {!hasNewAssignedCents && currentAssignedCents !== null && " · 이전 등록값"}
+                    {!hasNewAssignedCents && currentAssignedCents !== null && ` · ${assignedValueLabel}`}
                   </span>
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">그래프에 기록된 측정값 · {centsTableRows.length}건반</p>
