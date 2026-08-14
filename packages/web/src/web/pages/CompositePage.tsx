@@ -16,6 +16,7 @@ import { useTuningSession } from "@/hooks/useTuningSession";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { PIANO_KEYS } from "@/hooks/usePitchDetector";
 import TuningCurveChart from "@/components/tuner/TuningCurveChart";
+import Composite3Console from "@/pages/Composite3Console";
 import { exportToPdf, exportToImage } from "@/lib/tuner/exportPdf";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -331,6 +332,49 @@ export default function CompositePage() {
         };
       })
     : [];
+
+  // 복합3은 공용 복합 화면의 색상 변형이 아닌, 전용 정밀 조율 콘솔을 사용한다.
+  // 측정·확정·저장 훅은 아래와 동일한 공용 상태를 그대로 전달해 인식 로직은 바꾸지 않는다.
+  if (isComposite3) {
+    return (
+      <Composite3Console
+        seq={seq}
+        targetKey={targetKey}
+        isMeasured={isMeasured}
+        isListening={isListening}
+        result={result}
+        displayedLiveCents={displayedLiveCents}
+        displayedFinalCents={displayedFinalCents}
+        currentAssignedCents={currentAssignedCents}
+        assignedValueLabel={assignedValueLabel}
+        displayedMeasurementKey={displayedMeasurementKey}
+        isPro={isPro}
+        autoAdvance={autoAdvance}
+        onAutoAdvanceChange={(checked) => setAutoAdvance(checked)}
+        onToggleListening={() => { void toggleListening(); }}
+        isHighRepeatRange={isComposite2SmoothedGraphRange}
+        highRepeatCount={highRepeatCount}
+        highRepeatUsed={highRepeatConsensus?.used ?? null}
+        chartData={chartData}
+        centsTableRows={centsTableRows}
+        showCentsTable={showCentsTable}
+        onToggleCentsTable={() => setShowCentsTable((open) => !open)}
+        measuredCount={measuredCount}
+        undoAvailable={undoStack.length > 0}
+        onUndo={() => undoLastMeasurement()}
+        sessions={sessions}
+        activeSession={activeSession}
+        activeSessionId={activeSessionId}
+        onSelectSession={setActiveSessionId}
+        onCreateSession={() => { void createSession(); setShowSessionList(false); }}
+        userName={userName}
+        onUserNameChange={setUserName}
+        onExportPdf={() => { if (activeSession) exportToPdf(activeSession.name, userName, activeSession.measurements as any); }}
+        onExportImage={() => { if (activeSession) exportToImage(activeSession.name, userName, activeSession.measurements as any); }}
+        error={error}
+      />
+    );
+  }
 
   return (
     <div className={cn(
