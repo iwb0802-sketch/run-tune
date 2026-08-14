@@ -252,6 +252,20 @@ export default function CompositePage() {
     ? seq.targetKeyIndex in (activeSession.measurements as Record<number, unknown>)
     : false;
 
+  // 복합탭2의 그래프와 동일한 원본(chartData)만 표에 사용한다.
+  const centsTableRows = isComposite2
+    ? chartData
+      .filter((point) => point.measured && point.cents !== null)
+      .map((point) => {
+        const measurement = activeSession?.measurements[point.keyIndex];
+        return {
+          ...point,
+          frequency: measurement?.frequency ?? PIANO_KEYS[point.keyIndex].freq,
+          measuredAt: measurement?.measuredAt ?? null,
+        };
+      })
+    : [];
+
   return (
     <div className="min-h-screen bg-muted/50 flex flex-col" style={{ fontFamily: "'Noto Sans KR', sans-serif" }}>
 
@@ -467,6 +481,63 @@ export default function CompositePage() {
         <div className="bg-card border border-border rounded-xl p-2 shadow-sm">
           <TuningCurveChart data={chartData} activeKeyIndex={seq.targetKeyIndex} />
         </div>
+
+        {isComposite2 && (
+          <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border/70">
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">건반별 센트값</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">그래프에 기록된 측정값 · {centsTableRows.length}건반</p>
+              </div>
+              {centsTableRows.length > 0 && (
+                <span className="text-xs font-semibold text-precision bg-precision/10 px-2 py-1 rounded-full">
+                  현재 세션
+                </span>
+              )}
+            </div>
+            {centsTableRows.length === 0 ? (
+              <p className="px-4 py-6 text-center text-sm text-muted-foreground">기록된 센트값이 없습니다. 건반을 측정하면 표에 추가됩니다.</p>
+            ) : (
+              <div className="max-h-80 overflow-auto">
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-muted/95 backdrop-blur border-b border-border z-10">
+                    <tr className="text-left text-xs text-muted-foreground">
+                      <th className="px-4 py-2.5 font-semibold">건반</th>
+                      <th className="px-3 py-2.5 font-semibold">음</th>
+                      <th className="px-3 py-2.5 font-semibold text-right">센트</th>
+                      <th className="px-4 py-2.5 font-semibold text-right">기록 Hz</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/60">
+                    {centsTableRows.map((row) => {
+                      const cents = row.cents as number;
+                      const centsClass = Math.abs(cents) <= 2
+                        ? "text-in-tune"
+                        : Math.abs(cents) <= 8
+                          ? "text-warn"
+                          : "text-off";
+                      return (
+                        <tr key={row.keyIndex} className={cn(
+                          "hover:bg-muted/40 transition-colors",
+                          row.keyIndex === seq.targetKeyIndex && "bg-precision/5"
+                        )}>
+                          <td className="px-4 py-2.5 font-medium tabular-nums">{row.keyNumber}</td>
+                          <td className="px-3 py-2.5 font-semibold">{row.noteName}{row.octave}</td>
+                          <td className={cn("px-3 py-2.5 text-right font-bold tabular-nums", centsClass)}>
+                            {cents > 0 ? "+" : ""}{cents.toFixed(1)}¢
+                          </td>
+                          <td className="px-4 py-2.5 text-right text-muted-foreground tabular-nums">
+                            {row.frequency.toFixed(2)} Hz
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* 세션 + 내보내기 */}
         <div className="bg-card border border-border rounded-xl px-4 py-3 shadow-sm">
