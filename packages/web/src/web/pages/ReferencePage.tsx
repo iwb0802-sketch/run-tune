@@ -136,6 +136,7 @@ export default function ReferencePage() {
             <Link to="/" className="px-3 py-1 text-xs font-medium rounded-md text-muted-foreground hover:text-foreground transition-colors">자동</Link>
             <Link to="/manual" className="px-3 py-1 text-xs font-medium rounded-md text-muted-foreground hover:text-foreground transition-colors">수동</Link>
             <Link to="/composite" className="px-3 py-1 text-xs font-medium rounded-md text-muted-foreground hover:text-foreground transition-colors">복합</Link>
+            <Link to="/composite2" className="px-3 py-1 text-xs font-medium rounded-md text-muted-foreground hover:text-foreground transition-colors">복합2</Link>
             <span className="px-3 py-1 text-xs font-bold rounded-md bg-card text-primary shadow-sm">기준음</span>
           </nav>
           {/* 세션 */}

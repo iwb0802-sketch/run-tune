@@ -8,7 +8,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { toast as sonnerToast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useCompositeTuner } from "@/hooks/useCompositeTuner";
@@ -77,6 +77,8 @@ function EngineRow({ label, cents, active, highlight }: {
 }
 
 export default function CompositePage() {
+  const [location] = useLocation();
+  const isComposite2 = location === "/composite2";
   const { user } = useAuth();
   const { isPro } = useUserRole(user?.id);
 
@@ -173,14 +175,23 @@ export default function CompositePage() {
             </svg>
           </div>
           <div>
-            <h1 className="text-base font-bold text-foreground leading-tight">복합 조율</h1>
+            <h1 className="text-base font-bold text-foreground leading-tight">{isComposite2 ? "복합 조율 2" : "복합 조율"}</h1>
             <p className="text-xs text-muted-foreground/80">YIN · Goertzel 교차검증 · 스트로브 확정</p>
           </div>
         </div>
         <nav className="flex items-center gap-1 bg-muted rounded-lg p-0.5">
           <Link to="/"       className="px-3 py-1 text-xs font-medium rounded-md text-muted-foreground hover:text-foreground transition-colors">자동</Link>
           <Link to="/manual" className="px-3 py-1 text-xs font-medium rounded-md text-muted-foreground hover:text-foreground transition-colors">수동</Link>
-          <span                className="px-3 py-1 text-xs font-bold rounded-md bg-card text-precision shadow-sm">복합</span>
+          {isComposite2 ? (
+            <Link to="/composite" className="px-3 py-1 text-xs font-medium rounded-md text-muted-foreground hover:text-foreground transition-colors">복합</Link>
+          ) : (
+            <span className="px-3 py-1 text-xs font-bold rounded-md bg-card text-precision shadow-sm">복합</span>
+          )}
+          {isComposite2 ? (
+            <span className="px-3 py-1 text-xs font-bold rounded-md bg-card text-precision shadow-sm">복합2</span>
+          ) : (
+            <Link to="/composite2" className="px-3 py-1 text-xs font-medium rounded-md text-muted-foreground hover:text-foreground transition-colors">복합2</Link>
+          )}
           <Link to="/reference" className="px-3 py-1 text-xs font-medium rounded-md text-muted-foreground hover:text-foreground transition-colors">기준음</Link>
         </nav>
       </header>

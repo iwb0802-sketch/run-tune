@@ -354,6 +354,12 @@ export default function ManualPage() {
             복합
           </Link>
           <Link
+            to="/composite2"
+            className="px-3 py-1 text-xs font-medium rounded-md text-muted-foreground hover:text-foreground transition-colors"
+          >
+            복합2
+          </Link>
+          <Link
             to="/reference"
             className="px-3 py-1 text-xs font-medium rounded-md text-muted-foreground hover:text-foreground transition-colors"
           >
