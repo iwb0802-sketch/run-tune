@@ -551,7 +551,19 @@ export default function CompositePage() {
             <div className="flex items-center justify-between gap-3 px-4 py-3">
               <div>
                 <h3 className="text-sm font-semibold text-foreground">건반별 센트값</h3>
-                <p className="text-xs text-muted-foreground mt-0.5">그래프에 기록된 측정값 · {centsTableRows.length}건반</p>
+                <div className="mt-1 flex items-center gap-2 text-xs">
+                  <span className="font-semibold text-foreground/85">현재 {targetKey.keyNumber}번 {targetKey.noteName}{targetKey.octave}</span>
+                  <span className={cn(
+                    "font-black tabular-nums",
+                    displayedFinalCents === null ? "text-muted-foreground/50"
+                      : Math.abs(displayedFinalCents) <= 2 ? "text-in-tune"
+                      : Math.abs(displayedFinalCents) <= 8 ? "text-warn"
+                      : "text-off"
+                  )}>
+                    {displayedFinalCents === null ? "책정 대기" : `${displayedFinalCents > 0 ? "+" : ""}${displayedFinalCents.toFixed(1)}¢`}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">그래프에 기록된 측정값 · {centsTableRows.length}건반</p>
               </div>
               {centsTableRows.length > 0 && (
                 <button
