@@ -112,6 +112,7 @@ export default function CompositePage() {
 
   const [userName,        setUserName]        = useState("");
   const [showSessionList, setShowSessionList] = useState(false);
+  const [showCentsTable,  setShowCentsTable]  = useState(false);
   const [autoAdvance,     setAutoAdvance]     = useState(true);
 
   const activeSessionIdRef = useRef(activeSessionId);
@@ -335,6 +336,27 @@ export default function CompositePage() {
 
       <main className="flex-1 container max-w-3xl mx-auto px-4 py-4 flex flex-col gap-3">
 
+        {isComposite2 && (
+          <div className={cn(
+            "bg-card border rounded-xl px-4 py-3 shadow-sm flex items-center justify-between",
+            displayedFinalCents !== null ? "border-in-tune/60 bg-in-tune/5" : "border-border"
+          )}>
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground">현재 책정된 센트값</p>
+              <p className="text-xs text-muted-foreground/80 mt-0.5">그래프·건반별 표에 기록되는 최종값</p>
+            </div>
+            <div className={cn(
+              "text-3xl font-black tabular-nums",
+              displayedFinalCents === null ? "text-muted-foreground/30"
+                : Math.abs(displayedFinalCents) <= 2 ? "text-in-tune"
+                : Math.abs(displayedFinalCents) <= 8 ? "text-warn"
+                : "text-off"
+            )} style={{ fontFamily: "'JetBrains Mono', monospace" }}>
+              {displayedFinalCents === null ? "—" : `${displayedFinalCents > 0 ? "+" : ""}${displayedFinalCents.toFixed(1)}¢`}
+            </div>
+          </div>
+        )}
+
         {/* 구간 탭 */}
         <SectionTabs section={seq.section} onChange={seq.setSection} />
 
@@ -422,7 +444,7 @@ export default function CompositePage() {
         </div>
 
         {/* 엔진 상세 */}
-        <div className="bg-card border border-border rounded-xl px-4 py-3 shadow-sm">
+        <div className="order-last bg-card border border-border rounded-xl px-4 py-3 shadow-sm">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">엔진 상세</h3>
@@ -470,7 +492,7 @@ export default function CompositePage() {
         </div>
 
         {/* 마이크 + 자동진행 */}
-        <div className="flex items-center gap-2">
+        <div className="order-2 flex items-center gap-2">
           <button
             onClick={isPro ? toggleListening : undefined}
             disabled={!isPro}
@@ -500,11 +522,11 @@ export default function CompositePage() {
         </div>
 
         {!isPro && (
-          <p className="text-xs text-center text-muted-foreground">Pro 등급으로 변경하면 마이크를 사용할 수 있습니다.</p>
+          <p className="order-3 text-xs text-center text-muted-foreground">Pro 등급으로 변경하면 마이크를 사용할 수 있습니다.</p>
         )}
 
         {error && (
-          <div className="px-3 py-2 rounded-lg bg-off/10 border border-off/40 text-xs text-off">
+          <div className="order-3 px-3 py-2 rounded-lg bg-off/10 border border-off/40 text-xs text-off">
             {error}
           </div>
         )}
@@ -513,34 +535,38 @@ export default function CompositePage() {
         {undoStack.length > 0 && (
           <button
             onClick={() => undoLastMeasurement()}
-            className="flex items-center justify-center gap-1.5 py-2 rounded-xl text-sm border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-all"
+            className="order-4 flex items-center justify-center gap-1.5 py-2 rounded-xl text-sm border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-all"
           >
             ↩ 마지막 측정 취소
           </button>
         )}
 
         {/* 조율 커브 */}
-        <div className="bg-card border border-border rounded-xl p-2 shadow-sm">
+        <div className="order-5 bg-card border border-border rounded-xl p-2 shadow-sm">
           <TuningCurveChart data={chartData} activeKeyIndex={seq.targetKeyIndex} />
         </div>
 
         {isComposite2 && (
-          <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border/70">
+          <div className="order-1 bg-card border border-border rounded-xl shadow-sm overflow-hidden">
+            <div className="flex items-center justify-between gap-3 px-4 py-3">
               <div>
                 <h3 className="text-sm font-semibold text-foreground">건반별 센트값</h3>
                 <p className="text-xs text-muted-foreground mt-0.5">그래프에 기록된 측정값 · {centsTableRows.length}건반</p>
               </div>
               {centsTableRows.length > 0 && (
-                <span className="text-xs font-semibold text-precision bg-precision/10 px-2 py-1 rounded-full">
-                  현재 세션
-                </span>
+                <button
+                  onClick={() => setShowCentsTable((open) => !open)}
+                  className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-precision bg-precision/10 border border-precision/20 hover:bg-precision/15 transition-colors"
+                >
+                  {showCentsTable ? "전체표 접기" : "전체표 펼치기"}
+                  <span className={cn("transition-transform", showCentsTable && "rotate-180")}>⌄</span>
+                </button>
               )}
             </div>
             {centsTableRows.length === 0 ? (
-              <p className="px-4 py-6 text-center text-sm text-muted-foreground">기록된 센트값이 없습니다. 건반을 측정하면 표에 추가됩니다.</p>
-            ) : (
-              <div className="max-h-80 overflow-auto">
+              <p className="border-t border-border/70 px-4 py-6 text-center text-sm text-muted-foreground">기록된 센트값이 없습니다. 건반을 측정하면 표에 추가됩니다.</p>
+            ) : showCentsTable ? (
+              <div className="border-t border-border/70 max-h-[32rem] overflow-auto">
                 <table className="w-full text-sm">
                   <thead className="sticky top-0 bg-muted/95 backdrop-blur border-b border-border z-10">
                     <tr className="text-left text-xs text-muted-foreground">
@@ -577,12 +603,12 @@ export default function CompositePage() {
                   </tbody>
                 </table>
               </div>
-            )}
+            ) : null}
           </div>
         )}
 
         {/* 세션 + 내보내기 */}
-        <div className="bg-card border border-border rounded-xl px-4 py-3 shadow-sm">
+        <div className="order-6 bg-card border border-border rounded-xl px-4 py-3 shadow-sm">
           <div className="flex items-center justify-between mb-2">
             <div className="relative flex-1 mr-2">
               <button
