@@ -22,6 +22,12 @@ import { useUserRole } from "@/hooks/useUserRole";
 import SectionTabs from "@/pages/manual/SectionTabs";
 import TargetNoteBar from "@/pages/manual/TargetNoteBar";
 import { COMPOSITE2_SECTION_ORDERS, useManualSequence } from "@/pages/manual/useManualSequence";
+import {
+  appendHighRepeatSample,
+  resolveHighRepeatConsensus,
+  type HighRepeatConsensus,
+  type HighRepeatSample,
+} from "@/lib/tuner/highRepeatConsensus";
 
 const toast = Object.assign(
   (msg: string, opts?: { duration?: number }) => sonnerToast(msg, opts),
@@ -138,6 +144,8 @@ export default function CompositePage() {
   const SMOOTHED_GRAPH_LIMIT_CENTS = 50;
   const smoothedUpperCentsRef = useRef<number | null>(null);
   const savedSmoothedGraphKeyRef = useRef<number | null>(null);
+  const highRepeatSamplesRef = useRef<HighRepeatSample[]>([]);
+  const highRepeatArmedRef = useRef(true);
 
   const handleConfirmed = useCallback(async (r: typeof result) => {
     if (!r || r.finalCents === null) return;
@@ -181,6 +189,8 @@ export default function CompositePage() {
   const smoothedUpperKeyRef = useRef<number | null>(null);
   const [smoothedUpperCents, setSmoothedUpperCents] = useState<number | null>(null);
   const [smoothedGraphFinalCents, setSmoothedGraphFinalCents] = useState<number | null>(null);
+  const [highRepeatConsensus, setHighRepeatConsensus] = useState<HighRepeatConsensus | null>(null);
+  const [highRepeatCount, setHighRepeatCount] = useState(0);
 
   useEffect(() => {
     if (!isComposite2Upper || !isListening) {
@@ -209,34 +219,56 @@ export default function CompositePage() {
     smoothedUpperCentsRef.current = null;
     smoothedUpperKeyRef.current = null;
     savedSmoothedGraphKeyRef.current = null;
+    highRepeatSamplesRef.current = [];
+    highRepeatArmedRef.current = true;
     setSmoothedUpperCents(null);
     setSmoothedGraphFinalCents(null);
+    setHighRepeatConsensus(null);
+    setHighRepeatCount(0);
   }, [seq.targetKeyIndex]);
 
   const isComposite2SmoothedGraphRange = isComposite2Upper && seq.targetKeyIndex >= SMOOTHED_GRAPH_START_KEY;
   useEffect(() => {
-    if (!isComposite2SmoothedGraphRange || !isListening || smoothedUpperCents === null) return;
-    // 건반을 바꾼 직후 이전 건반의 state가 남아 새 건반에 기록되는 것을 막는다.
+    if (!isComposite2SmoothedGraphRange || !isListening) return;
+
+    // 신호가 끊긴 뒤 다음 타건을 하나의 새 측정값으로 받을 수 있게 재무장한다.
+    if (rawLiveCents === null) {
+      highRepeatArmedRef.current = true;
+      return;
+    }
+    if (!highRepeatArmedRef.current || smoothedUpperCents === null) return;
+    // 건반을 바꾼 직후 이전 건반의 state가 새 건반에 기록되는 것을 막는다.
     if (smoothedUpperKeyRef.current !== seq.targetKeyIndex) return;
-    // ±50¢ 밖은 오인식으로 간주하고 확정·그래프 기록 모두 하지 않는다.
+    // ±50¢ 밖은 오인식으로 간주하고 측정 회차에도 포함하지 않는다.
     if (Math.abs(smoothedUpperCents) > SMOOTHED_GRAPH_LIMIT_CENTS) return;
-    if (savedSmoothedGraphKeyRef.current === seq.targetKeyIndex) return;
+
+    highRepeatArmedRef.current = false;
+    const samples = appendHighRepeatSample(highRepeatSamplesRef.current, {
+      cents: smoothedUpperCents,
+      capturedAt: Date.now(),
+    });
+    highRepeatSamplesRef.current = samples;
+    setHighRepeatCount(samples.length);
+
+    const consensus = resolveHighRepeatConsensus(samples);
+    setHighRepeatConsensus(consensus);
+    // 최소 3회 + 단일 우세 덩어리가 확정되기 전에는 그래프에 저장하지 않고 추가 타건을 기다린다.
+    if (!consensus || savedSmoothedGraphKeyRef.current === seq.targetKeyIndex) return;
 
     const keyIndex = seq.targetKeyIndex;
-    const cents = smoothedUpperCents;
     savedSmoothedGraphKeyRef.current = keyIndex;
     void ensureSession().then(() => {
-      recordMeasurement(keyIndex, cents, PIANO_KEYS[keyIndex].freq);
-      setSmoothedGraphFinalCents(cents);
+      recordMeasurement(keyIndex, consensus.value, PIANO_KEYS[keyIndex].freq);
+      setSmoothedGraphFinalCents(consensus.value);
       toast.success(
-        `${PIANO_KEYS[keyIndex].noteName}${PIANO_KEYS[keyIndex].octave} (건반 ${keyIndex + 1}) → ${cents > 0 ? "+" : ""}${cents.toFixed(1)}¢`,
-        { duration: 1800 },
+        `${PIANO_KEYS[keyIndex].noteName}${PIANO_KEYS[keyIndex].octave} (건반 ${keyIndex + 1}) → ${consensus.value > 0 ? "+" : ""}${consensus.value.toFixed(1)}¢ · ${consensus.used}회 가중평균`,
+        { duration: 2200 },
       );
       if (autoAdvanceRef.current) {
         advanceTimerRef.current = setTimeout(() => { seqNextRef.current(); }, 1000);
       }
     });
-  }, [ensureSession, isComposite2SmoothedGraphRange, isListening, recordMeasurement, seq.targetKeyIndex, smoothedUpperCents]);
+  }, [ensureSession, isComposite2SmoothedGraphRange, isListening, rawLiveCents, recordMeasurement, seq.targetKeyIndex, smoothedUpperCents]);
 
   const displayedLiveCents = isComposite2Upper
     ? smoothedUpperCents ?? rawLiveCents
@@ -369,6 +401,16 @@ export default function CompositePage() {
                 ✓ 확정 {displayedFinalCents > 0 ? "+" : ""}{displayedFinalCents.toFixed(1)}¢
               </span>
             </div>
+          )}
+
+          {isComposite2SmoothedGraphRange && displayedFinalCents === null && highRepeatCount > 0 && (
+            <p className="mt-2 text-center text-xs text-precision/90">
+              {highRepeatConsensus
+                ? `고음 반복 ${highRepeatConsensus.used}회 가중평균 준비됨`
+                : highRepeatCount < 3
+                  ? `고음 반복 측정 ${highRepeatCount}/3 · 같은 건반을 다시 타건하세요`
+                  : `고음 반복 ${highRepeatCount}회 · 우세 덩어리 판정 대기 중`}
+            </p>
           )}
 
           {/* 신호 없음 */}
