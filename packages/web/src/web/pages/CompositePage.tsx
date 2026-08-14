@@ -31,6 +31,13 @@ const toast = Object.assign(
   }
 );
 
+function centsMedian(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
 function CentsBar({ cents }: { cents: number }) {
   const clamped = Math.max(-50, Math.min(50, cents));
   const inTune  = Math.abs(cents) <= 2;
@@ -156,8 +163,40 @@ export default function CompositePage() {
   };
 
   const targetKey = PIANO_KEYS[seq.targetKeyIndex];
-  const inTune    = result ? Math.abs(result.liveCents) <= 2  : false;
-  const warnRange = result ? Math.abs(result.liveCents) <= 8  : false;
+
+  // 시험용(구버전) 방식: 복합탭2의 상부값(50~88번)만 최근 200ms 중앙값으로 표시한다.
+  // 무음에서는 마지막 표시값을 유지하고, 목표 건반 변경·마이크 정지·다른 탭/구간 전환에서만 초기화한다.
+  const isComposite2Upper = isComposite2 && seq.section === "upper";
+  const rawLiveCents = result?.liveCents ?? null;
+  const smoothWindowRef = useRef<Array<{ t: number; cents: number }>>([]);
+  const [smoothedUpperCents, setSmoothedUpperCents] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!isComposite2Upper || !isListening) {
+      smoothWindowRef.current = [];
+      setSmoothedUpperCents(null);
+      return;
+    }
+    // 시험용 구버전과 동일하게 무음에서는 마지막 값을 지우지 않는다.
+    if (rawLiveCents === null) return;
+
+    const now = Date.now();
+    smoothWindowRef.current.push({ t: now, cents: rawLiveCents });
+    smoothWindowRef.current = smoothWindowRef.current.filter((sample) => now - sample.t <= 200);
+    const smoothed = Math.round(centsMedian(smoothWindowRef.current.map((sample) => sample.cents)) * 10) / 10;
+    if (Number.isFinite(smoothed)) setSmoothedUpperCents(smoothed);
+  }, [isComposite2Upper, isListening, rawLiveCents]);
+
+  useEffect(() => {
+    smoothWindowRef.current = [];
+    setSmoothedUpperCents(null);
+  }, [seq.targetKeyIndex]);
+
+  const displayedLiveCents = isComposite2Upper
+    ? smoothedUpperCents ?? rawLiveCents
+    : rawLiveCents;
+  const inTune    = displayedLiveCents !== null ? Math.abs(displayedLiveCents) <= 2 : false;
+  const warnRange = displayedLiveCents !== null ? Math.abs(displayedLiveCents) <= 8 : false;
 
   // 측정된 건반인지
   const isMeasured = activeSession
@@ -237,15 +276,15 @@ export default function CompositePage() {
               )}
               style={{ fontFamily: "'JetBrains Mono', monospace" }}
             >
-              {result
-                ? `${result.liveCents > 0 ? "+" : ""}${result.liveCents.toFixed(1)}`
+              {displayedLiveCents !== null
+                ? `${displayedLiveCents > 0 ? "+" : ""}${displayedLiveCents.toFixed(1)}`
                 : "0.0"}
             </span>
             <span className="text-xl text-muted-foreground ml-1">¢</span>
           </div>
 
           {/* cents 바 */}
-          <CentsBar cents={result?.liveCents ?? 0} />
+          <CentsBar cents={displayedLiveCents ?? 0} />
 
           {/* 캡처 진행 */}
           {result?.isCapturing && (
@@ -270,7 +309,7 @@ export default function CompositePage() {
           )}
 
           {/* 신호 없음 */}
-          {isListening && !result && (
+          {isListening && !result && displayedLiveCents === null && (
             <p className="text-xs text-center text-muted-foreground mt-2">
               마이크를 켜고 건반을 눌러주세요
             </p>
@@ -280,7 +319,14 @@ export default function CompositePage() {
         {/* 엔진 상세 */}
         <div className="bg-card border border-border rounded-xl px-4 py-3 shadow-sm">
           <div className="flex items-center justify-between mb-2">
-            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">엔진 상세</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">엔진 상세</h3>
+              {isComposite2Upper && (
+                <span className="text-[10px] font-semibold text-precision bg-precision/10 border border-precision/20 px-1.5 py-0.5 rounded-full">
+                  상부 200ms 스무딩
+                </span>
+              )}
+            </div>
             {result && (
               <span className={cn(
                 "flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold",
@@ -306,7 +352,7 @@ export default function CompositePage() {
             />
             <EngineRow
               label="복합 (확정값)"
-              cents={result?.liveCents ?? null}
+              cents={displayedLiveCents}
               active={!!result}
               highlight={!!result?.crossValid}
             />
