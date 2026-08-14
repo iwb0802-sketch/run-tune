@@ -277,8 +277,16 @@ export default function CompositePage() {
   const displayedFinalCents = isComposite2SmoothedGraphRange
     ? smoothedGraphFinalCents
     : result?.finalCents ?? null;
-  // 새 타건이 확정되기 전에는 세션에 등록되어 있던 해당 건반의 값을 계속 보여준다.
-  const registeredCents = chartData[seq.targetKeyIndex]?.cents ?? null;
+  // 새 타건이 확정되기 전에는 차트의 파생값이 아니라 세션에 저장된 해당 건반의 실제 등록값을 직접 읽는다.
+  // cents가 정확히 0인 정상 측정값도 존재하므로 0을 '값 없음'으로 취급하지 않는다.
+  const selectedMeasurement = activeSession?.measurements[seq.targetKeyIndex];
+  const registeredCents = selectedMeasurement
+    ? selectedMeasurement.strobeCents
+      ?? selectedMeasurement.strobe1
+      ?? selectedMeasurement.autoCentsRef
+      ?? selectedMeasurement.baseline?.cents
+      ?? selectedMeasurement.cents
+    : null;
   const currentAssignedCents = displayedFinalCents ?? registeredCents;
   const hasNewAssignedCents = displayedFinalCents !== null;
   const inTune    = displayedLiveCents !== null ? Math.abs(displayedLiveCents) <= 2 : false;
