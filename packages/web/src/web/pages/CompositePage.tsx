@@ -135,20 +135,19 @@ export default function CompositePage() {
 
   // 1-indexed 64번 C6은 keyIndex 63이다. 이 구간은 복합탭2 상부 스무딩값을 그래프 저장값으로 쓴다.
   const SMOOTHED_GRAPH_START_KEY = 63;
+  const SMOOTHED_GRAPH_LIMIT_CENTS = 50;
   const smoothedUpperCentsRef = useRef<number | null>(null);
+  const savedSmoothedGraphKeyRef = useRef<number | null>(null);
 
   const handleConfirmed = useCallback(async (r: typeof result) => {
     if (!r || r.finalCents === null) return;
-    const useSmoothedGraphValue = isComposite2 && r.keyIndex >= SMOOTHED_GRAPH_START_KEY;
-    // 확정 순간 사용자에게 보이던 200ms 스무딩값을 우선 저장해 그래프와 표시값을 일치시킨다.
-    const confirmedCents = useSmoothedGraphValue && smoothedUpperCentsRef.current !== null
-      ? smoothedUpperCentsRef.current
-      : r.finalCents;
+    // C6~88번 복합탭2는 엔진 finalCents 대신 아래 스무딩 신호 effect가 직접 저장한다.
+    if (isComposite2 && r.keyIndex >= SMOOTHED_GRAPH_START_KEY) return;
 
     await ensureSession();
-    recordMeasurement(r.keyIndex, confirmedCents, r.frequency);
+    recordMeasurement(r.keyIndex, r.finalCents, r.frequency);
     toast.success(
-      `${r.noteName}${r.octave} (건반 ${r.keyIndex + 1}) → ${confirmedCents > 0 ? "+" : ""}${confirmedCents.toFixed(1)}¢`,
+      `${r.noteName}${r.octave} (건반 ${r.keyIndex + 1}) → ${r.finalCents > 0 ? "+" : ""}${r.finalCents.toFixed(1)}¢`,
       { duration: 1800 }
     );
     if (autoAdvanceRef.current) {
@@ -179,12 +178,15 @@ export default function CompositePage() {
   const isComposite2Upper = isComposite2 && seq.section === "upper";
   const rawLiveCents = result?.liveCents ?? null;
   const smoothWindowRef = useRef<Array<{ t: number; cents: number }>>([]);
+  const smoothedUpperKeyRef = useRef<number | null>(null);
   const [smoothedUpperCents, setSmoothedUpperCents] = useState<number | null>(null);
+  const [smoothedGraphFinalCents, setSmoothedGraphFinalCents] = useState<number | null>(null);
 
   useEffect(() => {
     if (!isComposite2Upper || !isListening) {
       smoothWindowRef.current = [];
       smoothedUpperCentsRef.current = null;
+      smoothedUpperKeyRef.current = null;
       setSmoothedUpperCents(null);
       return;
     }
@@ -197,6 +199,7 @@ export default function CompositePage() {
     const smoothed = Math.round(centsMedian(smoothWindowRef.current.map((sample) => sample.cents)) * 10) / 10;
     if (Number.isFinite(smoothed)) {
       smoothedUpperCentsRef.current = smoothed;
+      smoothedUpperKeyRef.current = seq.targetKeyIndex;
       setSmoothedUpperCents(smoothed);
     }
   }, [isComposite2Upper, isListening, rawLiveCents]);
@@ -204,17 +207,43 @@ export default function CompositePage() {
   useEffect(() => {
     smoothWindowRef.current = [];
     smoothedUpperCentsRef.current = null;
+    smoothedUpperKeyRef.current = null;
+    savedSmoothedGraphKeyRef.current = null;
     setSmoothedUpperCents(null);
+    setSmoothedGraphFinalCents(null);
   }, [seq.targetKeyIndex]);
+
+  const isComposite2SmoothedGraphRange = isComposite2Upper && seq.targetKeyIndex >= SMOOTHED_GRAPH_START_KEY;
+  useEffect(() => {
+    if (!isComposite2SmoothedGraphRange || !isListening || smoothedUpperCents === null) return;
+    // 건반을 바꾼 직후 이전 건반의 state가 남아 새 건반에 기록되는 것을 막는다.
+    if (smoothedUpperKeyRef.current !== seq.targetKeyIndex) return;
+    // ±50¢ 밖은 오인식으로 간주하고 확정·그래프 기록 모두 하지 않는다.
+    if (Math.abs(smoothedUpperCents) > SMOOTHED_GRAPH_LIMIT_CENTS) return;
+    if (savedSmoothedGraphKeyRef.current === seq.targetKeyIndex) return;
+
+    const keyIndex = seq.targetKeyIndex;
+    const cents = smoothedUpperCents;
+    savedSmoothedGraphKeyRef.current = keyIndex;
+    void ensureSession().then(() => {
+      recordMeasurement(keyIndex, cents, PIANO_KEYS[keyIndex].freq);
+      setSmoothedGraphFinalCents(cents);
+      toast.success(
+        `${PIANO_KEYS[keyIndex].noteName}${PIANO_KEYS[keyIndex].octave} (건반 ${keyIndex + 1}) → ${cents > 0 ? "+" : ""}${cents.toFixed(1)}¢`,
+        { duration: 1800 },
+      );
+      if (autoAdvanceRef.current) {
+        advanceTimerRef.current = setTimeout(() => { seqNextRef.current(); }, 1000);
+      }
+    });
+  }, [ensureSession, isComposite2SmoothedGraphRange, isListening, recordMeasurement, seq.targetKeyIndex, smoothedUpperCents]);
 
   const displayedLiveCents = isComposite2Upper
     ? smoothedUpperCents ?? rawLiveCents
     : rawLiveCents;
-  const displayedFinalCents = result?.finalCents === null || result?.finalCents === undefined
-    ? null
-    : isComposite2 && result.keyIndex >= SMOOTHED_GRAPH_START_KEY
-      ? smoothedUpperCents ?? result.finalCents
-      : result.finalCents;
+  const displayedFinalCents = isComposite2SmoothedGraphRange
+    ? smoothedGraphFinalCents
+    : result?.finalCents ?? null;
   const inTune    = displayedLiveCents !== null ? Math.abs(displayedLiveCents) <= 2 : false;
   const warnRange = displayedLiveCents !== null ? Math.abs(displayedLiveCents) <= 8 : false;
 
