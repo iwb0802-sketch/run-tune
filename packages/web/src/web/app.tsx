@@ -9,6 +9,7 @@ const Home = lazy(() => import("./pages/Home"));
 const ManualPage = lazy(() => import("./pages/ManualPage"));
 const CompositePage = lazy(() => import("./pages/CompositePage"));
 const CompositePage2 = lazy(() => import("./pages/CompositePage2"));
+const CompositePage3 = lazy(() => import("./pages/CompositePage3"));
 const ReferencePage = lazy(() => import("./pages/ReferencePage"));
 const AuthPage = lazy(() => import("./pages/AuthPage"));
 
@@ -33,6 +34,7 @@ function AppRoutes() {
       <Route path="/manual" component={ManualPage} />
       <Route path="/composite" component={CompositePage} />
       <Route path="/composite2" component={CompositePage2} />
+      <Route path="/composite3" component={CompositePage3} />
       <Route path="/reference" component={ReferencePage} />
       <Route>
         <div className="min-h-screen flex items-center justify-center">

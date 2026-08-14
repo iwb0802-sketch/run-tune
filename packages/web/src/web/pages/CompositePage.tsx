@@ -91,7 +91,9 @@ function EngineRow({ label, cents, active, highlight }: {
 
 export default function CompositePage() {
   const [location] = useLocation();
-  const isComposite2 = location === "/composite2";
+  const isComposite3 = location === "/composite3";
+  // 복합탭2·3은 같은 전용 시퀀스와 고음 처리·센트표 기능을 공유한다.
+  const isComposite2 = location === "/composite2" || isComposite3;
   const { user } = useAuth();
   const { isPro } = useUserRole(user?.id);
 
@@ -344,7 +346,7 @@ export default function CompositePage() {
             </svg>
           </div>
           <div>
-            <h1 className="text-base font-bold text-foreground leading-tight">{isComposite2 ? "복합 조율 2" : "복합 조율"}</h1>
+            <h1 className="text-base font-bold text-foreground leading-tight">{isComposite3 ? "복합 조율 3" : isComposite2 ? "복합 조율 2" : "복합 조율"}</h1>
             <p className="text-xs text-muted-foreground/80">YIN · Goertzel 교차검증 · 스트로브 확정</p>
           </div>
         </div>
@@ -356,10 +358,15 @@ export default function CompositePage() {
           ) : (
             <span className="px-3 py-1 text-xs font-bold rounded-md bg-card text-precision shadow-sm">복합</span>
           )}
-          {isComposite2 ? (
+          {location === "/composite2" ? (
             <span className="px-3 py-1 text-xs font-bold rounded-md bg-card text-precision shadow-sm">복합2</span>
           ) : (
             <Link to="/composite2" className="px-3 py-1 text-xs font-medium rounded-md text-muted-foreground hover:text-foreground transition-colors">복합2</Link>
+          )}
+          {isComposite3 ? (
+            <span className="px-3 py-1 text-xs font-bold rounded-md bg-card text-precision shadow-sm">복합3</span>
+          ) : (
+            <Link to="/composite3" className="px-3 py-1 text-xs font-medium rounded-md text-muted-foreground hover:text-foreground transition-colors">복합3</Link>
           )}
           <Link to="/reference" className="px-3 py-1 text-xs font-medium rounded-md text-muted-foreground hover:text-foreground transition-colors">기준음</Link>
         </nav>

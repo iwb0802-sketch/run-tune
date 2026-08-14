@@ -295,6 +295,12 @@ export default function Home() {
               복합2
             </Link>
             <Link
+              to="/composite3"
+              className="px-3 py-1 text-xs font-medium rounded-md text-muted-foreground hover:text-foreground transition-colors"
+            >
+              복합3
+            </Link>
+            <Link
               to="/reference"
               className="px-3 py-1 text-xs font-medium rounded-md text-muted-foreground hover:text-foreground transition-colors"
             >
