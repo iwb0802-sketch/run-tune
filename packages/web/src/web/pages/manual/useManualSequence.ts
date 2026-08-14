@@ -27,6 +27,18 @@ export const SECTION_ORDERS: Record<ManualSection, number[]> = {
   upper: range(61, 87, +1),
 };
 
+/**
+ * 복합탭2 전용 순서(1-indexed):
+ * - 하부: 27 → 1
+ * - 중앙: 49 → 28 (내림차순)
+ * - 상부: 50 → 88 (오름차순)
+ */
+export const COMPOSITE2_SECTION_ORDERS: Record<ManualSection, number[]> = {
+  lower: range(26, 0, -1),
+  middle: range(48, 27, -1),
+  upper: range(49, 87, +1),
+};
+
 export const SECTION_LABELS: Record<ManualSection, string> = {
   middle: "중앙값",
   lower: "하부값",
@@ -45,7 +57,9 @@ export interface UseManualSequenceReturn {
   next: () => void;
 }
 
-export function useManualSequence(): UseManualSequenceReturn {
+export function useManualSequence(
+  sectionOrders: Record<ManualSection, number[]> = SECTION_ORDERS,
+): UseManualSequenceReturn {
   const [section, setSectionState] = useState<ManualSection>("middle");
   // 각 구간별 진행 인덱스 보관
   const [indices, setIndices] = useState<Record<ManualSection, number>>({
@@ -54,7 +68,7 @@ export function useManualSequence(): UseManualSequenceReturn {
     upper: 0,
   });
 
-  const order = SECTION_ORDERS[section];
+  const order = sectionOrders[section];
   const indexInOrder = indices[section];
   const targetKeyIndex = order[indexInOrder];
   const total = order.length;
@@ -68,14 +82,14 @@ export function useManualSequence(): UseManualSequenceReturn {
       ...prev,
       [section]: Math.max(0, prev[section] - 1),
     }));
-  }, [section]);
+  }, [section, sectionOrders]);
 
   const next = useCallback(() => {
     setIndices((prev) => ({
       ...prev,
-      [section]: Math.min(SECTION_ORDERS[section].length - 1, prev[section] + 1),
+      [section]: Math.min(sectionOrders[section].length - 1, prev[section] + 1),
     }));
-  }, [section]);
+  }, [section, sectionOrders]);
 
   return useMemo(
     () => ({

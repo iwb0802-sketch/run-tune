@@ -21,7 +21,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useUserRole } from "@/hooks/useUserRole";
 import SectionTabs from "@/pages/manual/SectionTabs";
 import TargetNoteBar from "@/pages/manual/TargetNoteBar";
-import { useManualSequence } from "@/pages/manual/useManualSequence";
+import { COMPOSITE2_SECTION_ORDERS, useManualSequence } from "@/pages/manual/useManualSequence";
 
 const toast = Object.assign(
   (msg: string, opts?: { duration?: number }) => sonnerToast(msg, opts),
@@ -82,7 +82,10 @@ export default function CompositePage() {
   const { user } = useAuth();
   const { isPro } = useUserRole(user?.id);
 
-  const seq = useManualSequence();
+  // Hooks는 경로 변경에도 동일 순서로 호출하고, 복합탭2에서만 전용 입력 순서를 선택한다.
+  const standardSequence = useManualSequence();
+  const composite2Sequence = useManualSequence(COMPOSITE2_SECTION_ORDERS);
+  const seq = isComposite2 ? composite2Sequence : standardSequence;
   const targetKeyRef = useRef(seq.targetKeyIndex);
   useEffect(() => {
     targetKeyRef.current = seq.targetKeyIndex;
