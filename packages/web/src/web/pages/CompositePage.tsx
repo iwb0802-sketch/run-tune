@@ -493,18 +493,18 @@ export default function CompositePage() {
                   : "bg-warn/15 text-warn"
               )}>
                 <span className={cn("w-1.5 h-1.5 rounded-full", result.crossValid ? "bg-in-tune" : "bg-warn")} />
-                {result.crossValid ? "교차검증 ✓" : "YIN 단독"}
+                {result.crossValid ? "교차검증 ✓" : "A 단독"}
               </span>
             )}
           </div>
           <div className="space-y-1">
             <EngineRow
-              label="YIN"
+              label="A"
               cents={result?.yinCents ?? null}
               active={!!result}
             />
             <EngineRow
-              label="Goertzel"
+              label="B"
               cents={result?.goertzelCents ?? null}
               active={!!result?.signalOk}
             />
@@ -517,7 +517,7 @@ export default function CompositePage() {
           </div>
           {result && !result.crossValid && (
             <p className="text-xs text-warn/80 mt-2 px-1">
-              YIN ↔ Goertzel 편차 큼 — Goertzel 단독 사용 중
+              A ↔ B 편차 큼 — B 단독 사용 중
             </p>
           )}
         </div>
