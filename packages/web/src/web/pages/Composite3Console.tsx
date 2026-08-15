@@ -207,6 +207,14 @@ export default function Composite3Console({
             </div>
           </section>
 
+          <section className="border border-[#73f7cf]/35 bg-[#0a1319] p-3 shadow-[0_0_0_1px_rgba(115,247,207,0.04)] xl:col-span-2">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <div><p className="font-mono text-[11px] font-black tracking-[0.2em] text-[#73f7cf]">TUNING MAP · LIVE INPUT</p><p className="mt-0.5 text-xs text-slate-500">입력되는 조율 곡선 · 현재 건반을 중심으로 확인</p></div>
+              <span className="border border-[#73f7cf]/30 bg-[#73f7cf]/10 px-2.5 py-1 font-mono text-xs font-black text-[#73f7cf]">{measuredCount}/88</span>
+            </div>
+            <div className="border border-white/10 bg-white"><TuningCurveChart data={chartData} activeKeyIndex={seq.targetKeyIndex} /></div>
+          </section>
+
           <section className="relative overflow-hidden border border-white/10 bg-[#0a1319] xl:order-2">
             <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#73f7cf] to-transparent" />
             <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
@@ -217,20 +225,20 @@ export default function Composite3Console({
               <span className={cn("border px-2 py-1 font-mono text-[10px] font-bold", isMeasured ? "border-[#73f7cf]/30 text-[#73f7cf]" : "border-white/10 text-slate-500")}>{isMeasured ? "RECORDED" : "UNSAVED"}</span>
             </div>
 
-            <div className="flex min-h-[390px] flex-col items-center justify-center px-5 py-8 text-center sm:min-h-[470px]">
+            <div className="flex flex-col items-center justify-center px-4 py-5 text-center">
               <p className="font-mono text-[10px] font-bold tracking-[0.28em] text-[#73f7cf]">CURRENT TUNING TARGET</p>
               <div className="mt-2 flex items-end justify-center gap-3">
-                <span className="font-mono text-6xl font-black tracking-[-0.08em] text-white sm:text-7xl">{targetKey.noteName}<sup className="ml-1 text-3xl text-[#73f7cf] sm:text-4xl">{targetKey.octave}</sup></span>
+                <span className="font-mono text-4xl font-black tracking-[-0.08em] text-white sm:text-5xl">{targetKey.noteName}<sup className="ml-1 text-2xl text-[#73f7cf] sm:text-3xl">{targetKey.octave}</sup></span>
                 <span className="mb-2 border border-white/15 px-2 py-1 font-mono text-xs text-slate-400">KEY {String(targetKey.keyNumber).padStart(2, "0")}</span>
               </div>
               <p className="mt-2 text-xs text-slate-500">지금 책정할 건반 · 기준 {targetKey.freq.toFixed(2)} Hz</p>
-              <div className="my-6 h-px w-full max-w-xl bg-white/10" />
+              <div className="my-3 h-px w-full max-w-xl bg-white/10" />
               <p className="font-mono text-[10px] font-bold tracking-[0.22em] text-slate-500">LIVE CENTS</p>
-              <div className="mt-3 flex items-start justify-center">
-                <span className={cn("font-mono text-[clamp(5rem,15vw,11rem)] font-black leading-none tracking-[-0.1em]", centsTone(displayedLiveCents))}>{displayedLiveCents === null ? "0.0" : `${displayedLiveCents > 0 ? "+" : ""}${displayedLiveCents.toFixed(1)}`}</span>
+              <div className="mt-2 flex items-start justify-center">
+                <span className={cn("font-mono text-[clamp(3.5rem,11vw,6.5rem)] font-black leading-none tracking-[-0.1em]", centsTone(displayedLiveCents))}>{displayedLiveCents === null ? "0.0" : `${displayedLiveCents > 0 ? "+" : ""}${displayedLiveCents.toFixed(1)}`}</span>
                 <span className="mt-2 ml-3 font-mono text-2xl text-slate-500 sm:text-3xl">¢</span>
               </div>
-              <div className="mt-8 w-full max-w-xl">
+              <div className="mt-4 w-full max-w-xl">
                 <div className="relative h-2 border border-white/10 bg-[#05080b]">
                   <div className="absolute inset-y-0 left-1/2 w-px bg-white/35" />
                   <div className="absolute inset-y-0 left-[42%] w-px bg-[#f8c76c]/30" />
@@ -242,7 +250,7 @@ export default function Composite3Console({
                 </div>
                 <div className="mt-2 flex justify-between font-mono text-[10px] text-slate-600"><span>−50</span><span>−8</span><span className="text-[#73f7cf]">0</span><span>+8</span><span>+50</span></div>
               </div>
-              <div className="mt-7 flex flex-wrap items-center justify-center gap-2">
+              <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
                 <span className={cn("border px-3 py-1.5 font-mono text-xs font-bold", result?.crossValid ? "border-[#73f7cf]/35 bg-[#73f7cf]/10 text-[#73f7cf]" : "border-white/10 text-slate-500")}>A·B {result?.crossValid ? "CROSS VALID" : "VERIFYING"}</span>
                 {displayedFinalCents !== null && <span className="border border-[#73f7cf]/35 bg-[#73f7cf]/10 px-3 py-1.5 font-mono text-xs font-bold text-[#73f7cf]">LOCKED {formatCents(displayedFinalCents)}</span>}
                 {result?.isCapturing && <span className="border border-[#f8c76c]/35 bg-[#f8c76c]/10 px-3 py-1.5 font-mono text-xs font-bold text-[#f8c76c]">CAPTURING {Math.round(result.captureProgress * 100)}%</span>}
@@ -254,11 +262,11 @@ export default function Composite3Console({
             </div>
 
             <div className="grid border-t border-white/10 sm:grid-cols-2">
-              <button onClick={seq.prev} disabled={!seq.canPrev} className="border-b border-white/10 px-5 py-4 text-left transition-colors hover:bg-white/[0.03] disabled:cursor-not-allowed disabled:opacity-30 sm:border-b-0 sm:border-r">
+              <button onClick={seq.prev} disabled={!seq.canPrev} className="border-b border-white/10 px-4 py-3 text-left transition-colors hover:bg-white/[0.03] disabled:cursor-not-allowed disabled:opacity-30 sm:border-b-0 sm:border-r">
                 <span className="font-mono text-[10px] tracking-[0.2em] text-slate-600">PREVIOUS</span>
                 <p className="mt-1 text-sm font-bold">← 이전 건반</p>
               </button>
-              <button onClick={seq.next} disabled={!seq.canNext} className="px-5 py-4 text-right transition-colors hover:bg-[#73f7cf]/[0.06] disabled:cursor-not-allowed disabled:opacity-30">
+              <button onClick={seq.next} disabled={!seq.canNext} className="px-4 py-3 text-right transition-colors hover:bg-[#73f7cf]/[0.06] disabled:cursor-not-allowed disabled:opacity-30">
                 <span className="font-mono text-[10px] tracking-[0.2em] text-slate-600">NEXT</span>
                 <p className="mt-1 text-sm font-bold text-[#73f7cf]">다음 건반 →</p>
               </button>
@@ -266,14 +274,14 @@ export default function Composite3Console({
           </section>
 
           <aside className="space-y-4 xl:order-3">
-            <section className="border border-white/10 bg-[#0a1319] p-4">
+            <section className="border border-white/10 bg-[#0a1319] p-3">
               <p className="font-mono text-[10px] font-bold tracking-[0.2em] text-[#73f7cf]">ASSIGNED VALUE</p>
               <div className="mt-4 flex items-end justify-between gap-3">
                 <div>
                   <p className="text-xs text-slate-500">{displayedMeasurementKey.keyNumber}번 {displayedMeasurementKey.noteName}{displayedMeasurementKey.octave}</p>
                   <p className="mt-1 text-sm font-bold text-white">확정 센트값 · {assignedValueLabel}</p>
                 </div>
-                <p className={cn("font-mono text-5xl font-black tracking-[-0.08em]", centsTone(currentAssignedCents))}>{formatCents(currentAssignedCents)}</p>
+                <p className={cn("font-mono text-3xl font-black tracking-[-0.08em]", centsTone(currentAssignedCents))}>{formatCents(currentAssignedCents)}</p>
               </div>
               <div className="mt-4 border-t border-white/10 pt-3 text-xs text-slate-500">확정된 최종값은 그래프와 건반별 기록표에 반영됩니다.</div>
             </section>
@@ -314,15 +322,7 @@ export default function Composite3Console({
 
         {error && <div className="mt-4 border border-[#fb7a8a]/40 bg-[#fb7a8a]/10 px-4 py-3 text-sm text-[#ffabb6]">{error}</div>}
 
-        <section className="mt-4 grid grid-cols-1 gap-4">
-          <div className="border border-[#73f7cf]/25 bg-[#0a1319] p-5 shadow-[0_0_0_1px_rgba(115,247,207,0.04)]">
-            <div className="mb-4 flex items-center justify-between">
-              <div><p className="font-mono text-xs font-black tracking-[0.22em] text-[#73f7cf]">TUNING MAP · PRIMARY</p><p className="mt-1 text-sm text-slate-400">조율 그래프 — 현재 건반과 전체 흐름을 확인하세요.</p></div>
-              <span className="border border-[#73f7cf]/30 bg-[#73f7cf]/10 px-3 py-1.5 font-mono text-sm font-black text-[#73f7cf]">{measuredCount}/88</span>
-            </div>
-            <div className="border border-white/10 bg-white"><TuningCurveChart data={chartData} activeKeyIndex={seq.targetKeyIndex} /></div>
-          </div>
-
+        <section className="mt-4">
           <div className="border border-white/10 bg-[#0a1319]">
             <div className="flex items-center justify-between border-b border-white/10 p-4">
               <div><p className="font-mono text-[10px] font-bold tracking-[0.2em] text-[#73f7cf]">MEASUREMENT LOG</p><p className="mt-1 text-xs text-slate-500">기록 {centsTableRows.length}건</p></div>
