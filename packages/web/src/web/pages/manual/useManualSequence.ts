@@ -55,6 +55,8 @@ export interface UseManualSequenceReturn {
   canNext: boolean;
   prev: () => void;
   next: () => void;
+  /** 감지된 건반으로 해당 구간과 진행 위치를 직접 이동한다. */
+  goToKey: (keyIndex: number) => void;
 }
 
 export function useManualSequence(
@@ -91,6 +93,16 @@ export function useManualSequence(
     }));
   }, [section, sectionOrders]);
 
+  const goToKey = useCallback((keyIndex: number) => {
+    for (const candidateSection of Object.keys(sectionOrders) as ManualSection[]) {
+      const candidateIndex = sectionOrders[candidateSection].indexOf(keyIndex);
+      if (candidateIndex < 0) continue;
+      setSectionState(candidateSection);
+      setIndices((prev) => ({ ...prev, [candidateSection]: candidateIndex }));
+      return;
+    }
+  }, [sectionOrders]);
+
   return useMemo(
     () => ({
       section,
@@ -102,7 +114,8 @@ export function useManualSequence(
       canNext: indexInOrder < total - 1,
       prev,
       next,
+      goToKey,
     }),
-    [section, setSection, indexInOrder, total, targetKeyIndex, prev, next]
+    [section, setSection, indexInOrder, total, targetKeyIndex, prev, next, goToKey]
   );
 }

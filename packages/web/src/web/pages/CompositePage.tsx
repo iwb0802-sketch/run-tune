@@ -11,7 +11,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { toast as sonnerToast } from "sonner";
 import { cn } from "@/lib/utils";
-import { useCompositeTuner } from "@/hooks/useCompositeTuner";
+import { useCompositeTuner, type CompositeResult } from "@/hooks/useCompositeTuner";
+import { useAutoCompositeTuner, type AutoCompositeResult } from "@/hooks/useAutoCompositeTuner";
 import { useTuningSession } from "@/hooks/useTuningSession";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { PIANO_KEYS } from "@/hooks/usePitchDetector";
@@ -117,6 +118,8 @@ export default function CompositePage() {
   const [showSessionList, setShowSessionList] = useState(false);
   const [showCentsTable,  setShowCentsTable]  = useState(false);
   const [autoAdvance,     setAutoAdvance]     = useState(true);
+  // 복합3 AUTO: 현재 지정 건반이 아닌 실제 타건음을 먼저 판별해 대상 건반을 이동한다.
+  const [autoTargetEnabled, setAutoTargetEnabled] = useState(false);
 
   const activeSessionIdRef = useRef(activeSessionId);
   useEffect(() => { activeSessionIdRef.current = activeSessionId; }, [activeSessionId]);
@@ -151,7 +154,7 @@ export default function CompositePage() {
   const highRepeatSamplesRef = useRef<HighRepeatSample[]>([]);
   const highRepeatArmedRef = useRef(true);
 
-  const handleConfirmed = useCallback(async (r: typeof result) => {
+  const handleConfirmed = useCallback(async (r: CompositeResult) => {
     if (!r || r.finalCents === null) return;
     // C6~88번 복합탭2는 엔진 finalCents 대신 아래 스무딩 신호 effect가 직접 저장한다.
     if (isComposite2 && r.keyIndex >= SMOOTHED_GRAPH_START_KEY) return;
@@ -167,19 +170,73 @@ export default function CompositePage() {
     }
   }, [ensureSession, isComposite2, recordMeasurement]);
 
-  const { isListening, result, startListening, stopListening, error } =
-    useCompositeTuner(seq.targetKeyIndex, handleConfirmed, 4096);
+  const handleAutoConfirmed = useCallback(async (r: AutoCompositeResult) => {
+    if (r.finalCents === null) return;
+    await ensureSession();
+    recordMeasurement(r.keyIndex, r.finalCents, r.frequency);
+    toast.success(
+      `${r.noteName}${r.octave} (건반 ${r.keyIndex + 1}) 자동 확정 → ${r.finalCents > 0 ? "+" : ""}${r.finalCents.toFixed(1)}¢`,
+      { duration: 1800 },
+    );
+  }, [ensureSession, recordMeasurement]);
+
+  const fixedTuner = useCompositeTuner(seq.targetKeyIndex, handleConfirmed, 4096);
+  const autoTuner = useAutoCompositeTuner(handleAutoConfirmed, 8192);
+  const isListening = autoTargetEnabled ? autoTuner.isListening : fixedTuner.isListening;
+  const error = autoTargetEnabled ? autoTuner.error : fixedTuner.error;
+  const result: CompositeResult | null = autoTargetEnabled && autoTuner.result
+    ? {
+        keyIndex: autoTuner.result.keyIndex,
+        noteName: autoTuner.result.noteName,
+        octave: autoTuner.result.octave,
+        frequency: autoTuner.result.frequency,
+        yinCents: autoTuner.result.yinCents,
+        goertzelCents: autoTuner.result.goertzelCents,
+        liveCents: autoTuner.result.liveCents,
+        finalCents: autoTuner.result.finalCents,
+        crossValid: autoTuner.result.crossValid,
+        signalOk: autoTuner.result.signalOk,
+        isCapturing: autoTuner.result.isCapturing,
+        captureProgress: autoTuner.result.captureProgress,
+      }
+    : fixedTuner.result;
+
+  // AUTO가 안정적으로 감지한 음을 현재 대상 건반으로 옮긴다. 세션·그래프·확정 흐름은 공용 상태를 계속 쓴다.
+  useEffect(() => {
+    const detectedKeyIndex = autoTuner.result?.keyIndex;
+    if (!autoTargetEnabled || detectedKeyIndex === undefined || detectedKeyIndex === seq.targetKeyIndex) return;
+    seq.goToKey(detectedKeyIndex);
+  }, [autoTargetEnabled, autoTuner.result?.keyIndex, seq.goToKey, seq.targetKeyIndex]);
 
   useWakeLock(isListening);
 
+  const ensureActiveSession = async () => {
+    if (activeSessionIdRef.current) return;
+    const s = await createSession();
+    if (s) activeSessionIdRef.current = s.id;
+  };
+
   const toggleListening = async () => {
-    if (isListening) stopListening();
-    else {
-      if (!activeSessionIdRef.current) {
-        const s = await createSession();
-        if (s) activeSessionIdRef.current = s.id;
-      }
-      await startListening();
+    if (autoTargetEnabled) {
+      if (autoTuner.isListening) autoTuner.stopListening();
+      else { await ensureActiveSession(); await autoTuner.startListening(); }
+      return;
+    }
+    if (fixedTuner.isListening) fixedTuner.stopListening();
+    else { await ensureActiveSession(); await fixedTuner.startListening(); }
+  };
+
+  const toggleAutoTarget = async () => {
+    if (!isPro) return;
+    const nextEnabled = !autoTargetEnabled;
+    if (nextEnabled) {
+      fixedTuner.stopListening();
+      setAutoTargetEnabled(true);
+      await ensureActiveSession();
+      await autoTuner.startListening();
+    } else {
+      autoTuner.stopListening();
+      setAutoTargetEnabled(false);
     }
   };
 
@@ -187,7 +244,8 @@ export default function CompositePage() {
 
   // 시험용(구버전) 방식: 복합탭2의 상부값(50~88번)만 최근 200ms 중앙값으로 표시한다.
   // 무음에서는 마지막 표시값을 유지하고, 목표 건반 변경·마이크 정지·다른 탭/구간 전환에서만 초기화한다.
-  const isComposite2Upper = isComposite2 && seq.section === "upper";
+  // AUTO에서는 자동 복합 엔진의 확정값만 저장한다. 수동 고음 스무딩 저장은 중복 실행하지 않는다.
+  const isComposite2Upper = isComposite2 && !autoTargetEnabled && seq.section === "upper";
   const rawLiveCents = result?.liveCents ?? null;
   const smoothWindowRef = useRef<Array<{ t: number; cents: number }>>([]);
   const smoothedUpperKeyRef = useRef<number | null>(null);
@@ -351,6 +409,8 @@ export default function CompositePage() {
         isPro={isPro}
         autoAdvance={autoAdvance}
         onAutoAdvanceChange={(checked) => setAutoAdvance(checked)}
+        autoTargetEnabled={autoTargetEnabled}
+        onToggleAutoTarget={() => { void toggleAutoTarget(); }}
         onToggleListening={() => { void toggleListening(); }}
         isHighRepeatRange={isComposite2SmoothedGraphRange}
         highRepeatCount={highRepeatCount}

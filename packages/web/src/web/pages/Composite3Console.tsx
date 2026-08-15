@@ -27,6 +27,9 @@ interface Composite3ConsoleProps {
   isPro: boolean;
   autoAdvance: boolean;
   onAutoAdvanceChange: (checked: boolean) => void;
+  /** 타건음을 감지해 대상 건반을 자동 전환하는 복합3 전용 모드 */
+  autoTargetEnabled: boolean;
+  onToggleAutoTarget: () => void;
   onToggleListening: () => void;
   isHighRepeatRange: boolean;
   highRepeatCount: number;
@@ -91,6 +94,8 @@ export default function Composite3Console({
   isPro,
   autoAdvance,
   onAutoAdvanceChange,
+  autoTargetEnabled,
+  onToggleAutoTarget,
   onToggleListening,
   isHighRepeatRange,
   highRepeatCount,
@@ -202,6 +207,7 @@ export default function Composite3Console({
               <div className="flex flex-wrap items-center gap-2">
                 <select value={activeSessionId ?? ""} onChange={(event) => onSelectSession(event.target.value)} className="min-w-40 border border-[#dfe6de] bg-[#f5f7f3] px-3 py-2 text-xs text-slate-700 outline-none focus:border-[#5f9273]/70"><option value="">세션 선택</option>{sessions.map((session) => <option key={session.id} value={session.id}>{session.name}</option>)}</select>
                 <button onClick={onCreateSession} className="border border-[#cfd9cf] px-3 py-2 text-xs font-bold text-slate-600 transition-colors hover:border-[#5f9273]/60 hover:text-[#5f9273]">+ 새 세션</button>
+                <button onClick={isPro ? onToggleAutoTarget : undefined} disabled={!isPro} className={cn("flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-black tracking-[0.08em] transition-colors", !isPro ? "cursor-not-allowed border-[#dfe6de] bg-slate-100 text-slate-400" : autoTargetEnabled ? "border-[#5f9273]/60 bg-[#e7f1e7] text-[#416e53]" : "border-[#cfd9cf] bg-[#f8faf5] text-slate-500 hover:border-[#a9beaa]")}><span className={cn("h-1.5 w-1.5 rounded-full", autoTargetEnabled ? "bg-[#5f9273]" : "bg-slate-300")} />AUTO</button>
               </div>
             </div>
           </section>
