@@ -216,23 +216,25 @@ export default function Composite3Console({
           </section>
 
           <section className="order-2 border border-white/10 bg-[#0a1319] xl:order-2">
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2.5 sm:px-4">
-              <div className="flex items-center gap-2">
-                <span className="font-mono text-[9px] font-bold tracking-[0.16em] text-slate-500">TARGET</span>
-                <span className="font-mono text-2xl font-black text-white">{targetKey.noteName}<sup className="ml-0.5 text-sm text-[#73f7cf]">{targetKey.octave}</sup></span>
-                <span className="border border-white/10 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">K{targetKey.keyNumber}</span>
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-3 py-2.5 sm:px-4">
+              <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+                <span className="shrink-0 font-mono text-[9px] font-bold tracking-[0.16em] text-slate-500">TARGET</span>
+                <span className="shrink-0 font-mono text-2xl font-black text-white">{targetKey.noteName}<sup className="ml-0.5 text-sm text-[#73f7cf]">{targetKey.octave}</sup></span>
+                <span className="shrink-0 border border-white/10 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">K{targetKey.keyNumber}</span>
+                <span className="h-5 shrink-0 w-px bg-white/10" />
+                <span className="shrink-0 font-mono text-[9px] font-bold tracking-[0.16em] text-slate-500">LIVE</span>
+                <span className={cn("min-w-0 truncate font-mono text-3xl font-black tracking-[-0.08em]", centsTone(displayedLiveCents))}>{displayedLiveCents === null ? "0.0" : `${displayedLiveCents > 0 ? "+" : ""}${displayedLiveCents.toFixed(1)}`}</span>
+                <span className="shrink-0 font-mono text-sm text-slate-500">¢</span>
               </div>
-              <div className="h-5 w-px bg-white/10" />
-              <div className="flex items-baseline gap-1">
-                <span className="font-mono text-[9px] font-bold tracking-[0.16em] text-slate-500">LIVE</span>
-                <span className={cn("font-mono text-3xl font-black tracking-[-0.08em]", centsTone(displayedLiveCents))}>{displayedLiveCents === null ? "0.0" : `${displayedLiveCents > 0 ? "+" : ""}${displayedLiveCents.toFixed(1)}`}</span>
-                <span className="font-mono text-sm text-slate-500">¢</span>
-              </div>
-              <div className="flex items-center gap-1.5 sm:ml-auto">
+              <div className="flex shrink-0 items-center gap-1.5">
                 <span className={cn("border px-1.5 py-1 font-mono text-[9px] font-bold", result?.crossValid ? "border-[#73f7cf]/35 text-[#73f7cf]" : "border-white/10 text-slate-500")}>{result?.crossValid ? "A·B OK" : "VERIFY"}</span>
-                <button onClick={seq.prev} disabled={!seq.canPrev} className="border border-white/10 px-2 py-1 font-mono text-xs text-slate-400 hover:border-white/30 disabled:opacity-30">←</button>
-                <button onClick={seq.next} disabled={!seq.canNext} className="border border-[#73f7cf]/25 px-2 py-1 font-mono text-xs text-[#73f7cf] hover:bg-[#73f7cf]/10 disabled:opacity-30">→</button>
+                <button aria-label="이전 건반" onClick={seq.prev} disabled={!seq.canPrev} className="grid h-7 w-7 place-items-center border border-white/10 font-mono text-xs text-slate-400 hover:border-white/30 disabled:opacity-30">←</button>
+                <button aria-label="다음 건반" onClick={seq.next} disabled={!seq.canNext} className="grid h-7 w-7 place-items-center border border-[#73f7cf]/25 font-mono text-xs text-[#73f7cf] hover:bg-[#73f7cf]/10 disabled:opacity-30">→</button>
               </div>
+            </div>
+            <div className="flex items-center justify-between gap-3 border-t border-white/10 px-3 py-2 sm:px-4">
+              <label className="flex items-center gap-1.5 text-[11px] text-slate-400"><input type="checkbox" checked={autoAdvance} onChange={(event) => onAutoAdvanceChange(event.target.checked)} className="h-3.5 w-3.5 accent-[#73f7cf]" />자동 진행</label>
+              <button onClick={isPro ? onToggleListening : undefined} disabled={!isPro} className={cn("px-3 py-2 text-xs font-black tracking-[0.06em] transition-colors", !isPro ? "cursor-not-allowed bg-slate-700 text-slate-400" : isListening ? "bg-[#fb7a8a] text-[#2a070d] hover:bg-[#ff98a5]" : "bg-[#73f7cf] text-[#06231d] hover:bg-[#a0ffdf]")}>{!isPro ? "PRO 마이크" : isListening ? "■ 측정 중지" : "● 정밀 측정 시작"}</button>
             </div>
             {(result?.isCapturing || (isHighRepeatRange && displayedFinalCents === null && highRepeatCount > 0)) && (
               <div className="border-t border-white/10 px-3 py-1.5 text-[10px] text-[#f8c76c]">{result?.isCapturing ? `안정 측정 중 ${Math.round(result.captureProgress * 100)}%` : highRepeatUsed ? `반복 측정 ${highRepeatUsed}회 가중평균 준비됨` : `고음 반복 측정 ${highRepeatCount}/3`}</div>
@@ -271,18 +273,6 @@ export default function Composite3Console({
               </div>
             </section>
 
-            <section className="border border-[#73f7cf]/25 bg-[#73f7cf]/[0.05] p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div><p className="font-mono text-[10px] font-bold tracking-[0.2em] text-[#73f7cf]">CONTROL</p><p className="mt-1 text-xs text-slate-500">마이크와 진행 방식</p></div>
-                <label className="flex items-center gap-2 text-xs text-slate-300"><input type="checkbox" checked={autoAdvance} onChange={(event) => onAutoAdvanceChange(event.target.checked)} className="h-4 w-4 accent-[#73f7cf]" />자동 진행</label>
-              </div>
-              <button
-                onClick={isPro ? onToggleListening : undefined}
-                disabled={!isPro}
-                className={cn("mt-4 w-full px-4 py-4 text-sm font-black tracking-[0.08em] transition-all", !isPro ? "cursor-not-allowed bg-slate-700 text-slate-400" : isListening ? "bg-[#fb7a8a] text-[#2a070d] hover:bg-[#ff98a5]" : "bg-[#73f7cf] text-[#06231d] hover:bg-[#a0ffdf]")}
-              >{!isPro ? "PRO 전용 마이크" : isListening ? "■ 측정 중지" : "● 정밀 측정 시작"}</button>
-              {!isPro && <p className="mt-2 text-center text-[11px] text-slate-500">Pro 등급에서 마이크 측정 기능을 사용할 수 있습니다.</p>}
-            </section>
           </aside>
         </div>
 
