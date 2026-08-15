@@ -256,20 +256,12 @@ export default function Composite3Console({
 
             <section className="border border-white/10 bg-[#0a1319] p-4">
               <div className="flex items-center justify-between">
-                <div><p className="font-mono text-[10px] font-bold tracking-[0.2em] text-[#73f7cf]">ENGINE STATUS</p><p className="mt-1 text-xs text-slate-500">A·B 독립 분석</p></div>
+                <div><p className="font-mono text-[10px] font-bold tracking-[0.2em] text-[#73f7cf]">ENGINE STATUS</p><p className="mt-1 text-xs text-slate-500">A·B 교차 확인</p></div>
                 <SignalMark active={!!result?.crossValid} warn={!!result && !result.crossValid} />
               </div>
-              <div className="mt-4 space-y-2">
-                {[
-                  ["A / YIN", result?.yinCents ?? null, !!result],
-                  ["B / GOERTZEL", result?.goertzelCents ?? null, !!result?.signalOk],
-                  ["COMPOSITE", displayedLiveCents, !!result?.crossValid],
-                ].map(([label, cents, active]) => (
-                  <div key={label as string} className="flex items-center justify-between border border-white/10 bg-[#0d181f] px-3 py-2.5">
-                    <span className={cn("font-mono text-[10px] tracking-[0.1em]", active ? "text-slate-200" : "text-slate-600")}>{label as string}</span>
-                    <span className={cn("font-mono text-xs font-bold", centsTone(cents as number | null))}>{formatCents(cents as number | null)}</span>
-                  </div>
-                ))}
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <div className="flex items-center justify-between border border-white/10 bg-[#0d181f] px-3 py-2.5"><span className="font-mono text-sm font-black text-slate-200">A</span><span className={cn("font-mono text-xs font-bold", centsTone(result?.yinCents ?? null))}>{formatCents(result?.yinCents ?? null)}</span></div>
+                <div className="flex items-center justify-between border border-white/10 bg-[#0d181f] px-3 py-2.5"><span className="font-mono text-sm font-black text-slate-200">B</span><span className={cn("font-mono text-xs font-bold", centsTone(result?.goertzelCents ?? null))}>{formatCents(result?.goertzelCents ?? null)}</span></div>
               </div>
             </section>
 
