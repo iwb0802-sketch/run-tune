@@ -259,9 +259,10 @@ export default function Composite3Console({
                 <div><p className="font-mono text-[10px] font-bold tracking-[0.2em] text-[#73f7cf]">ENGINE STATUS</p><p className="mt-1 text-xs text-slate-500">A·B 교차 확인</p></div>
                 <SignalMark active={!!result?.crossValid} warn={!!result && !result.crossValid} />
               </div>
-              <div className="mt-4 grid grid-cols-2 gap-2">
-                <div className="flex items-center justify-between border border-white/10 bg-[#0d181f] px-3 py-2.5"><span className="font-mono text-sm font-black text-slate-200">A</span><span className={cn("font-mono text-xs font-bold", centsTone(result?.yinCents ?? null))}>{formatCents(result?.yinCents ?? null)}</span></div>
-                <div className="flex items-center justify-between border border-white/10 bg-[#0d181f] px-3 py-2.5"><span className="font-mono text-sm font-black text-slate-200">B</span><span className={cn("font-mono text-xs font-bold", centsTone(result?.goertzelCents ?? null))}>{formatCents(result?.goertzelCents ?? null)}</span></div>
+              <div className="mt-4 grid grid-cols-3 gap-2">
+                <div className="flex min-w-0 flex-col gap-1 border border-white/10 bg-[#0d181f] px-3 py-2.5"><span className="font-mono text-sm font-black text-slate-200">A</span><span className={cn("truncate font-mono text-xs font-bold", centsTone(result?.yinCents ?? null))}>{formatCents(result?.yinCents ?? null)}</span></div>
+                <div className="flex min-w-0 flex-col gap-1 border border-white/10 bg-[#0d181f] px-3 py-2.5"><span className="font-mono text-sm font-black text-slate-200">B</span><span className={cn("truncate font-mono text-xs font-bold", centsTone(result?.goertzelCents ?? null))}>{formatCents(result?.goertzelCents ?? null)}</span></div>
+                <div className={cn("flex min-w-0 flex-col gap-1 border px-3 py-2.5", result?.crossValid ? "border-[#73f7cf]/40 bg-[#73f7cf]/10" : "border-white/10 bg-[#0d181f]")}><span className={cn("font-mono text-sm font-black", result?.crossValid ? "text-[#73f7cf]" : "text-slate-200")}>확정</span><span className={cn("truncate font-mono text-xs font-bold", centsTone(displayedFinalCents ?? displayedLiveCents))}>{formatCents(displayedFinalCents ?? displayedLiveCents)}</span></div>
               </div>
             </section>
 
