@@ -17,6 +17,7 @@ import { useTuningSession } from "@/hooks/useTuningSession";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { PIANO_KEYS } from "@/hooks/usePitchDetector";
 import TuningCurveChart from "@/components/tuner/TuningCurveChart";
+import { A4_KEY_INDEX, offsetFromA4, recommendedCentsAt } from "@/lib/tuner/recommendedCurve";
 import Composite3Console from "@/pages/Composite3Console";
 import { exportToPdf, exportToImage } from "@/lib/tuner/exportPdf";
 import { useAuth } from "@/hooks/useAuth";
@@ -354,6 +355,20 @@ export default function CompositePage() {
       ?? measurement.cents
     : null;
   const registeredCents = storedCents(selectedMeasurement);
+
+  // ── 추천 센트 ─────────────────────────────────────────────────────
+  // A4(49번 건반) 실측값을 기준점으로, 허용범위 중앙값 커브를 평행이동해 추천값을 만든다.
+  // A4가 -2.0¢로 등록되면 전체 추천값이 -2.0¢ 쪽으로, +3.0¢면 +3.0¢ 쪽으로 이동한다.
+  const a4Measurement = activeSession?.measurements[A4_KEY_INDEX]
+    ?? activeSession?.measurements[A4_KEY_INDEX + 1]
+    ?? allMeasurements.find((measurement) =>
+      measurement.keyIndex === A4_KEY_INDEX || measurement.keyIndex === A4_KEY_INDEX + 1
+    );
+  const a4Cents = storedCents(a4Measurement);
+  const recommendedOffset = a4Cents !== null && a4Cents !== undefined ? offsetFromA4(a4Cents) : null;
+  const targetRecommendedCents = recommendedOffset !== null
+    ? recommendedCentsAt(seq.targetKeyIndex, recommendedOffset)
+    : null;
   // 선택 건반에 아직 값이 없을 때는 가장 최근 등록값을 보여 주되, 음 이름도 함께 맞춰 표시한다.
   const latestMeasurement = allMeasurements.reduce<typeof selectedMeasurement>((latest, measurement) =>
     !latest || measurement.measuredAt > latest.measuredAt ? measurement : latest,
@@ -752,7 +767,7 @@ export default function CompositePage() {
 
         {/* 조율 커브 */}
         <div className="order-5 bg-card border border-border rounded-xl p-2 shadow-sm">
-          <TuningCurveChart data={chartData} activeKeyIndex={seq.targetKeyIndex} />
+          <TuningCurveChart data={chartData} activeKeyIndex={seq.targetKeyIndex} recommendedOffset={isComposite2 ? recommendedOffset : null} />
         </div>
 
         {isComposite2 && (
@@ -776,6 +791,14 @@ export default function CompositePage() {
                   </span>
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">그래프에 기록된 측정값 · {centsTableRows.length}건반</p>
+                {recommendedOffset !== null ? (
+                  <p className="mt-1 text-xs text-[#7c3aed]">
+                    A4 {a4Cents !== null && a4Cents !== undefined && a4Cents > 0 ? "+" : ""}{(a4Cents ?? 0).toFixed(1)}¢ 기준 추천 커브 적용
+                    {targetRecommendedCents !== null && ` · 현재 ${targetKey.keyNumber}번 추천 ${targetRecommendedCents > 0 ? "+" : ""}${targetRecommendedCents.toFixed(1)}¢`}
+                  </p>
+                ) : (
+                  <p className="mt-1 text-xs text-muted-foreground/70">A4(49번 건반)를 측정하면 그 값을 기준으로 추천 센트가 표시됩니다.</p>
+                )}
               </div>
               {centsTableRows.length > 0 && (
                 <button
@@ -797,6 +820,8 @@ export default function CompositePage() {
                       <th className="px-4 py-2.5 font-semibold">건반</th>
                       <th className="px-3 py-2.5 font-semibold">음</th>
                       <th className="px-3 py-2.5 font-semibold text-right">센트</th>
+                      <th className="px-3 py-2.5 font-semibold text-right">추천</th>
+                      <th className="px-3 py-2.5 font-semibold text-right">편차</th>
                       <th className="px-4 py-2.5 font-semibold text-right">기록 Hz</th>
                     </tr>
                   </thead>
@@ -808,6 +833,17 @@ export default function CompositePage() {
                         : Math.abs(cents) <= 8
                           ? "text-warn"
                           : "text-off";
+                      const recommended = recommendedOffset !== null
+                        ? recommendedCentsAt(row.keyIndex, recommendedOffset)
+                        : null;
+                      const deviation = recommended !== null ? Math.round((cents - recommended) * 10) / 10 : null;
+                      const deviationClass = deviation === null
+                        ? "text-muted-foreground/50"
+                        : Math.abs(deviation) <= 2
+                          ? "text-in-tune"
+                          : Math.abs(deviation) <= 5
+                            ? "text-warn"
+                            : "text-off";
                       return (
                         <tr key={row.keyIndex} className={cn(
                           "hover:bg-muted/40 transition-colors",
@@ -818,7 +854,16 @@ export default function CompositePage() {
                           <td className={cn("px-3 py-2.5 text-right font-bold tabular-nums", centsClass)}>
                             {cents > 0 ? "+" : ""}{cents.toFixed(1)}¢
                           </td>
-                          <td className="px-4 py-2.5 text-right text-muted-foreground tabular-nums">
+                          <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-[#7c3aed]">
+                            {recommended === null
+                              ? "—"
+                              : `${recommended > 0 ? "+" : ""}${recommended.toFixed(1)}¢`}
+                          </td>
+                          <td className={cn("px-3 py-2.5 text-right font-bold tabular-nums", deviationClass)}>
+                            {deviation === null
+                              ? "—"
+                              : `${deviation > 0 ? "+" : ""}${deviation.toFixed(1)}¢`}
+                          </td>                          <td className="px-4 py-2.5 text-right text-muted-foreground tabular-nums">
                             {row.frequency.toFixed(2)} Hz
                           </td>
                         </tr>

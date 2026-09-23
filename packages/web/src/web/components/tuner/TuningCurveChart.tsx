@@ -11,6 +11,9 @@
 
 import { PIANO_KEYS } from "@/hooks/usePitchDetector";
 import { RAILSBACK, UPPER_TOL, LOWER_TOL, UPPER_ABS, LOWER_ABS } from "@/lib/tuner/tuningCurveData";
+
+// 추천 센트선의 기준 곡선 = 허용범위 중앙값
+const RECOMMENDED_BASE = RAILSBACK;
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 interface ChartDataPoint {
@@ -28,6 +31,11 @@ interface TuningCurveChartProps {
   data: ChartDataPoint[];
   activeKeyIndex?: number | null;
   showStrobeOnly?: boolean;
+  /**
+   * A4 실측값에서 계산된 추천 커브 오프셋(센트).
+   * 값이 있으면 중앙값(RAILSBACK)을 이 만큼 평행이동한 "추천 센트" 선을 추가로 그린다.
+   */
+  recommendedOffset?: number | null;
 }
 
 // 허용 범위 데이터는 tuningCurveData.ts에서 import
@@ -37,7 +45,7 @@ const A_INDICES = PIANO_KEYS
   .filter(k => k.noteName === "A")
   .map(k => k.i);
 
-export default function TuningCurveChart({ data, activeKeyIndex, showStrobeOnly = false }: TuningCurveChartProps) {
+export default function TuningCurveChart({ data, activeKeyIndex, showStrobeOnly = false, recommendedOffset = null }: TuningCurveChartProps) {
   const SVG_W = 960;
   const SVG_H = 480;
   const PAD = { top: 30, right: 52, bottom: 110, left: 48 };
@@ -222,6 +230,18 @@ export default function TuningCurveChart({ data, activeKeyIndex, showStrobeOnly 
     return pts.join(" ");
   }, [visStart, visEnd, xOf]);
 
+  // 추천 센트선 (A4 실측 기준으로 평행이동한 중앙값)
+  const recommendedPath = useMemo(() => {
+    if (recommendedOffset === null || recommendedOffset === undefined) return null;
+    const pts: string[] = [];
+    for (let i = visStart; i <= visEnd; i++) {
+      const x = xOf(i);
+      const y = yOf(RECOMMENDED_BASE[i] + recommendedOffset);
+      pts.push(i === visStart ? `M ${x.toFixed(1)} ${y.toFixed(1)}` : `L ${x.toFixed(1)} ${y.toFixed(1)}`);
+    }
+    return pts.join(" ");
+  }, [visStart, visEnd, xOf, recommendedOffset]);
+
     // Y축 눈금
   const yMajor = [-40,-30,-20,-10,0,10,20,30,40];
   const yMinor: number[] = [];
@@ -351,6 +371,13 @@ export default function TuningCurveChart({ data, activeKeyIndex, showStrobeOnly 
           <g clipPath="url(#plotClip)">
             <path d={railsbackPath} fill="none" stroke="#ef4444" strokeWidth={1.8} opacity={0.85} />
           </g>
+
+          {/* 추천 센트선 — A4 실측 기준으로 이동한 중앙값 (보라 파선) */}
+          {recommendedPath && (
+            <g clipPath="url(#plotClip)">
+              <path d={recommendedPath} fill="none" stroke="#7c3aed" strokeWidth={2} strokeDasharray="7,4" opacity={0.95} />
+            </g>
+          )}
 
           {/* Y축 왼쪽 */}
           {yMajor.map(c => (
@@ -527,6 +554,14 @@ export default function TuningCurveChart({ data, activeKeyIndex, showStrobeOnly 
           <span className="inline-block w-6 h-0.5 rounded" style={{ background: "#ef4444" }} />
           <span className="text-gray-400">기준음 (스트레치 중앙값)</span>
         </span>
+        {recommendedOffset !== null && recommendedOffset !== undefined && (
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block w-6 h-0 rounded" style={{ borderTop: "2px dashed #7c3aed" }} />
+            <span className="text-gray-400">
+              추천 센트 (A4 {recommendedOffset + RECOMMENDED_BASE[48] > 0 ? "+" : ""}{(recommendedOffset + RECOMMENDED_BASE[48]).toFixed(1)}¢ 기준)
+            </span>
+          </span>
+        )}
         <span className="flex items-center gap-1.5">
           <span className="inline-block w-2.5 h-2.5 rounded-full bg-[#1e3a5f]" />
           <span className="text-gray-400">자동감지</span>
