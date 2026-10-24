@@ -18,6 +18,8 @@ import { useTuningSession } from "@/hooks/useTuningSession";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { PIANO_KEYS } from "@/hooks/usePitchDetector";
 import TuningCurveChart from "@/components/tuner/TuningCurveChart";
+import { useWatchBridge } from "@/hooks/useWatchBridge";
+import { supabase } from "@/lib/supabase/client";
 import { A4_KEY_INDEX, offsetFromA4, recommendedCentsAt } from "@/lib/tuner/recommendedCurve";
 import Composite3Console from "@/pages/Composite3Console";
 import { exportToPdf, exportToImage } from "@/lib/tuner/exportPdf";
@@ -372,6 +374,34 @@ export default function CompositePage() {
   const targetRecommendedCents = recommendedOffset !== null
     ? recommendedCentsAt(seq.targetKeyIndex, recommendedOffset)
     : null;
+  // 복합2 전용 워치 연결. 현재 건반에 해당하는 값만 전송한다.
+  const watchHasCurrentSignal = isListening && result?.keyIndex === seq.targetKeyIndex;
+  const watchLiveCents = watchHasCurrentSignal ? displayedLiveCents : null;
+  useWatchBridge(location === "/composite2", {
+    section: seq.section,
+    canChangeSection: !autoTargetEnabled,
+    keyIndex: seq.targetKeyIndex,
+    keyNumber: targetKey.keyNumber,
+    note: `${targetKey.noteName}${targetKey.octave}`,
+    liveCents: watchLiveCents,
+    finalCents: watchHasCurrentSignal ? displayedFinalCents : null,
+    recommendedCents: targetRecommendedCents,
+    deviation: watchLiveCents !== null && targetRecommendedCents !== null
+      ? Math.round((watchLiveCents - targetRecommendedCents) * 10) / 10 : null,
+    listening: isListening,
+    canPrev: !autoTargetEnabled && seq.canPrev,
+    canNext: !autoTargetEnabled && seq.canNext,
+    autoTarget: autoTargetEnabled,
+    a4Cents: typeof a4Cents === "number" && Number.isFinite(a4Cents) ? a4Cents : null,
+    account: user?.id ?? null,
+  }, {
+    prev: seq.prev,
+    next: seq.next,
+    setSection: seq.setSection,
+    goToKey: seq.goToKey,
+    getAccessToken: async () => (await supabase.auth.getSession()).data.session?.access_token ?? null,
+    sectionOrders: COMPOSITE2_SECTION_ORDERS,
+  });
   // 선택 건반에 아직 값이 없을 때는 가장 최근 등록값을 보여 주되, 음 이름도 함께 맞춰 표시한다.
   const latestMeasurement = allMeasurements.reduce<typeof selectedMeasurement>((latest, measurement) =>
     !latest || measurement.measuredAt > latest.measuredAt ? measurement : latest,
