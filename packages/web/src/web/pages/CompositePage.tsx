@@ -374,6 +374,21 @@ export default function CompositePage() {
   const targetRecommendedCents = recommendedOffset !== null
     ? recommendedCentsAt(seq.targetKeyIndex, recommendedOffset)
     : null;
+  // 선택 건반에 아직 값이 없을 때는 가장 최근 등록값을 보여 주되, 음 이름도 함께 맞춰 표시한다.
+  const latestMeasurement = allMeasurements.reduce<typeof selectedMeasurement>((latest, measurement) =>
+    !latest || measurement.measuredAt > latest.measuredAt ? measurement : latest,
+    undefined,
+  );
+  const latestRegisteredCents = storedCents(latestMeasurement);
+  const currentAssignedCents = displayedFinalCents ?? registeredCents ?? latestRegisteredCents;
+  const hasNewAssignedCents = displayedFinalCents !== null;
+  const isSelectedRegistered = registeredCents !== null;
+  const displayedMeasurementKey = hasNewAssignedCents || isSelectedRegistered
+    ? targetKey
+    : latestMeasurement ? PIANO_KEYS[latestMeasurement.keyIndex] ?? targetKey : targetKey;
+  const assignedValueLabel = hasNewAssignedCents
+    ? "새 책정값"
+    : isSelectedRegistered ? "이전 등록값" : latestRegisteredCents !== null ? "최근 등록값" : "책정 대기";
   // 복합2 전용 워치 연결. 현재 건반에 해당하는 값만 전송한다.
   const watchHasCurrentSignal = isListening && result?.keyIndex === seq.targetKeyIndex;
   const watchLiveCents = watchHasCurrentSignal ? displayedLiveCents : null;
@@ -394,6 +409,11 @@ export default function CompositePage() {
     autoTarget: autoTargetEnabled,
     a4Cents: typeof a4Cents === "number" && Number.isFinite(a4Cents) ? a4Cents : null,
     account: user?.id ?? null,
+    // 휴대폰 "현재 책정된 센트값"과 같은 값. 무음이 되어도 다음 값이 나오기 전까지 유지된다.
+    assignedCents: typeof currentAssignedCents === "number" && Number.isFinite(currentAssignedCents) ? currentAssignedCents : null,
+    assignedLabel: assignedValueLabel,
+    assignedKeyNumber: displayedMeasurementKey.keyNumber,
+    assignedNote: `${displayedMeasurementKey.noteName}${displayedMeasurementKey.octave}`,
   }, {
     prev: seq.prev,
     next: seq.next,
@@ -402,21 +422,6 @@ export default function CompositePage() {
     getAccessToken: async () => (await supabase.auth.getSession()).data.session?.access_token ?? null,
     sectionOrders: COMPOSITE2_SECTION_ORDERS,
   });
-  // 선택 건반에 아직 값이 없을 때는 가장 최근 등록값을 보여 주되, 음 이름도 함께 맞춰 표시한다.
-  const latestMeasurement = allMeasurements.reduce<typeof selectedMeasurement>((latest, measurement) =>
-    !latest || measurement.measuredAt > latest.measuredAt ? measurement : latest,
-    undefined,
-  );
-  const latestRegisteredCents = storedCents(latestMeasurement);
-  const currentAssignedCents = displayedFinalCents ?? registeredCents ?? latestRegisteredCents;
-  const hasNewAssignedCents = displayedFinalCents !== null;
-  const isSelectedRegistered = registeredCents !== null;
-  const displayedMeasurementKey = hasNewAssignedCents || isSelectedRegistered
-    ? targetKey
-    : latestMeasurement ? PIANO_KEYS[latestMeasurement.keyIndex] ?? targetKey : targetKey;
-  const assignedValueLabel = hasNewAssignedCents
-    ? "새 책정값"
-    : isSelectedRegistered ? "이전 등록값" : latestRegisteredCents !== null ? "최근 등록값" : "책정 대기";
   const inTune    = displayedLiveCents !== null ? Math.abs(displayedLiveCents) <= 2 : false;
   const warnRange = displayedLiveCents !== null ? Math.abs(displayedLiveCents) <= 8 : false;
 

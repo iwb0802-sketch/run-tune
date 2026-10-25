@@ -21,6 +21,11 @@ export interface WatchState {
   a4Cents: number | null;
   /** 로그인 계정 ID. 워치는 이 값만으로 활성화하지 않고 서버 검증을 따로 요청한다. */
   account: string | null;
+  /** 휴대폰 "현재 책정된 센트값"(새 책정값 → 이전 등록값 → 최근 등록값). */
+  assignedCents?: number | null;
+  assignedLabel?: string;
+  assignedKeyNumber?: number;
+  assignedNote?: string;
 }
 
 export interface WatchActions {
