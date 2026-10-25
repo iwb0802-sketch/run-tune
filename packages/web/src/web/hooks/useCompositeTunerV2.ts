@@ -297,6 +297,13 @@ export function useCompositeTunerV2(
         }
         const measuredBaseHz  = isLow ? (lowEstimate?.frequency ?? baseFreq) : bestFreq / partial;
         const goertzelCents   = Math.round(1200 * Math.log2(measuredBaseHz / baseFreq) * 10) / 10;
+        // Never display a fabricated 0-cent reading when low-register estimation fails.
+        if (isLow && !lowEstimate) {
+          resetCapture();
+          setResult(null);
+          rafRef.current = requestAnimationFrame(detect);
+          return;
+        }
 
         // ── 3. 교차검증 ──────────────────────────────────────────────
         // 고음: YIN null이어도 Goertzel 단독으로 신뢰 (signalOk만 요구)
