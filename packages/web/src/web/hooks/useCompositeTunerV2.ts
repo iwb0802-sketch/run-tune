@@ -278,25 +278,41 @@ export function useCompositeTunerV2(
         const targetFreq = baseFreq * partial;
 
         // 도미넌스 체크 — 고음은 기준 완화 (배음이 많아 dominant 피크 약함)
-        const gTarget = goertzel(buf, sr, targetFreq);
-        const magLo   = goertzel(buf, sr, targetFreq * Math.pow(2, -1.5 / 12)).magnitude;
-        const magHi   = goertzel(buf, sr, targetFreq * Math.pow(2,  1.5 / 12)).magnitude;
+        const spectralBuf = winBuf ?? buf;
+        const gTarget = goertzel(spectralBuf, sr, targetFreq);
+        const magLo   = goertzel(spectralBuf, sr, targetFreq * Math.pow(2, -1.5 / 12)).magnitude;
+        const magHi   = goertzel(spectralBuf, sr, targetFreq * Math.pow(2,  1.5 / 12)).magnitude;
         const domRatio = isHigh ? 1.1 : DOMINANCE_RATIO; // 고음: 도미넌스 기준 완화
         const signalOk = gTarget.magnitude > Math.max(magLo, magHi, 1e-9) * domRatio;
 
-        // coarse scan — 고음은 step 2¢, ±80¢ 범위
-        const step      = isLow ? COARSE_STEP_LOW : isHigh ? COARSE_STEP_HIGH : COARSE_STEP_MID;
+        // Windowed Goertzel scan with sub-cent parabolic peak interpolation.
+        // A fixed grid alone creates quantization error in the displayed cents.
+        const step = isHigh ? 2 : 2;
         const scanCents = isHigh ? SCAN_RANGE_CENTS_HIGH : SCAN_RANGE_CENTS;
         const scanRange = Math.round(scanCents / step);
-        let bestFreq = targetFreq;
-        let bestMag  = -1;
-        for (let i = -scanRange; !isLow && i <= scanRange; i++) {
-          const f   = targetFreq * Math.pow(2, (i * step) / 1200);
-          const mag = goertzel(buf, sr, f).magnitude;
-          if (mag > bestMag) { bestMag = mag; bestFreq = f; }
+        let bestOffset = 0;
+        let bestMag = -1;
+        if (!isLow) {
+          for (let i = -scanRange; i <= scanRange; i++) {
+            const offset = i * step;
+            const f = targetFreq * Math.pow(2, offset / 1200);
+            const mag = goertzel(spectralBuf, sr, f).magnitude;
+            if (mag > bestMag) { bestMag = mag; bestOffset = offset; }
+          }
+          if (Math.abs(bestOffset) < scanCents - step) {
+            const m0 = goertzel(spectralBuf, sr, targetFreq * Math.pow(2, (bestOffset - step) / 1200)).magnitude;
+            const m2 = goertzel(spectralBuf, sr, targetFreq * Math.pow(2, (bestOffset + step) / 1200)).magnitude;
+            const denom = m0 - 2 * bestMag + m2;
+            if (denom < -1e-12) {
+              const delta = Math.max(-1, Math.min(1, 0.5 * (m0 - m2) / denom));
+              bestOffset += delta * step;
+            }
+          }
         }
-        const measuredBaseHz  = isLow ? (lowEstimate?.frequency ?? baseFreq) : bestFreq / partial;
-        const goertzelCents   = Math.round(1200 * Math.log2(measuredBaseHz / baseFreq) * 10) / 10;
+        const measuredBaseHz = isLow
+          ? (lowEstimate?.frequency ?? baseFreq)
+          : baseFreq * Math.pow(2, bestOffset / 1200);
+        const goertzelCents = Math.round(1200 * Math.log2(measuredBaseHz / baseFreq) * 10) / 10;
         // Never display a fabricated 0-cent reading when low-register estimation fails.
         if (isLow && !lowEstimate) {
           resetCapture();
@@ -313,21 +329,14 @@ export function useCompositeTunerV2(
             ? CROSS_VALID_THRESHOLD_HIGH
             : CROSS_VALID_THRESHOLD;
 
-        const crossValid = isLow ? (lowEstimate !== null && lowEstimate.confidence >= 0.25)
-          : isHigh
-          ? (signalOk || yinCents !== null) // 고음: 둘 중 하나만 있으면 통과
-          : (signalOk && yinCents !== null && Math.abs(yinCents - goertzelCents) <= threshold);
-
-        const effectiveYin = yinCents ?? goertzelCents;
-        // 고음: YIN이 있으면 YIN 우선, 없으면 Goertzel 단독
-        const liveCents = isLow ? goertzelCents : (crossValid && yinCents !== null)
-          ? Math.round(((effectiveYin + goertzelCents) / 2) * 10) / 10
-          : isHigh && signalOk
-            ? goertzelCents
-            : crossValid
-              ? Math.round(((effectiveYin + goertzelCents) / 2) * 10) / 10
-              : goertzelCents;
-
+        // Reject disagreement instead of averaging an inaccurate YIN result
+        // into an otherwise clean spectral estimate.
+        const yinAgrees = yinCents !== null &&
+          Math.abs(yinCents - goertzelCents) <= threshold;
+        const crossValid = isLow
+          ? (lowEstimate !== null && lowEstimate.confidence >= 0.25)
+          : (signalOk && (yinCents === null ? isHigh : yinAgrees));
+        const liveCents = goertzelCents;
         // ── 4. 스트로브 안정화 ────────────────────────────────────────
         // 고음: peakThreshold 낮추고 PEAK_RATIO 완화 (빠른 decay)
         const peakThreshold = isHigh ? PEAK_THRESHOLD_HIGH : PEAK_THRESHOLD;
@@ -349,14 +358,16 @@ export function useCompositeTunerV2(
         let isCapturing = false;
         let captureProgress = 0;
 
-        if (isStable && (!isLow || crossValid)) {
+        if (isStable && crossValid) {
           if (captureStartRef.current === null) captureStartRef.current = Date.now();
           captureBufferRef.current.push(liveCents);
           const elapsed = Date.now() - captureStartRef.current;
           isCapturing      = true;
           captureProgress  = Math.min(elapsed / stableDuration, 1);
 
-          if (elapsed >= stableDuration && captureBufferRef.current.length >= minSamples) {
+          const captureMedian = median(captureBufferRef.current);
+          const captureSpread = median(captureBufferRef.current.map(c => Math.abs(c - captureMedian)));
+          if (elapsed >= stableDuration && captureBufferRef.current.length >= minSamples && captureSpread <= (isLow ? 2 : 1.5)) {
             finalCents               = Math.round(median(captureBufferRef.current) * 10) / 10;
             captureStartRef.current  = null;
             captureBufferRef.current = [];
