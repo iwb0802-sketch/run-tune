@@ -1,0 +1,19 @@
+name: Full build verification
+on:
+  push:
+    branches: [test/full-build-20261026]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.5
+      - run: bun install --frozen-lockfile
+      - name: Web TypeScript and Vite build
+        run: cd packages/web && bun run build
+      - name: Desktop build
+        run: cd packages/desktop && bun run build
