@@ -18,7 +18,6 @@ import {
   median,
   goertzel,
   targetPartial,
-  selectBestPartial,
 } from "@/lib/tuner/pitchEngine";
 
 export interface CompositeResult {
