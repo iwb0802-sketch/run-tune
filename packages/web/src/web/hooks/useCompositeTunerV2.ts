@@ -274,7 +274,9 @@ export function useCompositeTunerV2(
         const yinCents = fYin > 0 ? yinFreqToCents(fYin, baseFreq) : null;
 
         // ── 2. Goertzel → 배음 기반 cent ─────────────────────────────
-        const partial = targetPartial(ki);
+        // C3 and above: measure the fundamental. The old 2nd-harmonic
+        // mapping misreads pure tones and biases mixed spectra.
+        const partial = isLow ? targetPartial(ki) : 1;
         const targetFreq = baseFreq * partial;
 
         // 도미넌스 체크 — 고음은 기준 완화 (배음이 많아 dominant 피크 약함)
