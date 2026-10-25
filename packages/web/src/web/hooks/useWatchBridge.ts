@@ -26,7 +26,11 @@ export interface WatchState {
   assignedLabel?: string;
   assignedKeyNumber?: number;
   assignedNote?: string;
+  /** 이 상태를 보내는 측정 방식(페이지). 없으면 복합2(/composite2). 워치 설정 "측정 방식"과 비교한다. */
+  engine?: WatchEngine;
 }
+
+export type WatchEngine = "composite2" | "composite2-1";
 
 export interface WatchActions {
   prev: () => void;
@@ -35,7 +39,7 @@ export interface WatchActions {
   goToKey: (keyIndex: number) => void;
   /** 현재 Supabase 세션 access token. 네이티브 앱이 서버에 검증만 하고 저장/워치 전송하지 않는다. */
   getAccessToken: () => Promise<string | null>;
-  /** 복합2 구간별 건반 순서. */
+  /** 복합2 / 복합2-1 구간별 건반 순서(둘 다 같다). */
   sectionOrders: Record<WatchSection, number[]>;
 }
 

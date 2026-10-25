@@ -414,6 +414,7 @@ export default function CompositePage() {
     assignedLabel: assignedValueLabel,
     assignedKeyNumber: displayedMeasurementKey.keyNumber,
     assignedNote: `${displayedMeasurementKey.noteName}${displayedMeasurementKey.octave}`,
+    engine: "composite2",
   }, {
     prev: seq.prev,
     next: seq.next,

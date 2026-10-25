@@ -8,11 +8,12 @@
  *     (복합2처럼 직전 타건의 표시값이 저장되거나, 신호 끊김마다 재무장되지 않음)
  *  ③ 저음 8192 창 + 고정 배음(targetPartial)
  *
- * 복합2 코드(CompositePage.tsx / useCompositeTuner.ts)와 워치 연결은 건드리지 않는다.
+ * 복합2 코드(CompositePage.tsx / useCompositeTuner.ts)는 건드리지 않는다.
+ * 워치 연결: 복합2와 같은 브리지(useWatchBridge)를 /composite2-1 에서도 켠다(engine: "composite2-1").
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { toast as sonnerToast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useCompositeTuner21, type Composite21Result } from "@/hooks/useCompositeTuner21";
@@ -23,6 +24,8 @@ import TuningCurveChart from "@/components/tuner/TuningCurveChart";
 import { offsetFromA4, A4_KEY_INDEX, recommendedCentsAt } from "@/lib/tuner/recommendedCurve";
 import { exportToPdf, exportToImage } from "@/lib/tuner/exportPdf";
 import { useAuth } from "@/hooks/useAuth";
+import { useWatchBridge } from "@/hooks/useWatchBridge";
+import { supabase } from "@/lib/supabase/client";
 import { useUserRole } from "@/hooks/useUserRole";
 import SectionTabs from "@/pages/manual/SectionTabs";
 import TargetNoteBar from "@/pages/manual/TargetNoteBar";
@@ -92,6 +95,7 @@ export default function CompositePage21() {
   const isComposite2 = true;
   const { user } = useAuth();
   const { isPro } = useUserRole(user?.id);
+  const [location] = useLocation();
 
   const seq = useManualSequence(COMPOSITE2_SECTION_ORDERS);
 
@@ -274,6 +278,39 @@ export default function CompositePage21() {
   const assignedValueLabel = hasNewAssignedCents
     ? "새 책정값"
     : isSelectedRegistered ? "이전 등록값" : latestRegisteredCents !== null ? "최근 등록값" : "책정 대기";
+  // 워치 연결(복합2와 같은 필드). 현재 건반에 해당하는 값만 전송한다. 2-1 에는 AUTO 가 없다.
+  const watchHasCurrentSignal = isListening && result?.keyIndex === seq.targetKeyIndex;
+  const watchLiveCents = watchHasCurrentSignal ? displayedLiveCents : null;
+  useWatchBridge(location === "/composite2-1", {
+    section: seq.section,
+    canChangeSection: true,
+    keyIndex: seq.targetKeyIndex,
+    keyNumber: targetKey.keyNumber,
+    note: `${targetKey.noteName}${targetKey.octave}`,
+    liveCents: watchLiveCents,
+    finalCents: watchHasCurrentSignal ? displayedFinalCents : null,
+    recommendedCents: targetRecommendedCents,
+    deviation: watchLiveCents !== null && targetRecommendedCents !== null
+      ? Math.round((watchLiveCents - targetRecommendedCents) * 10) / 10 : null,
+    listening: isListening,
+    canPrev: seq.canPrev,
+    canNext: seq.canNext,
+    autoTarget: false,
+    a4Cents: typeof a4Cents === "number" && Number.isFinite(a4Cents) ? a4Cents : null,
+    account: user?.id ?? null,
+    assignedCents: typeof currentAssignedCents === "number" && Number.isFinite(currentAssignedCents) ? currentAssignedCents : null,
+    assignedLabel: assignedValueLabel,
+    assignedKeyNumber: displayedMeasurementKey.keyNumber,
+    assignedNote: `${displayedMeasurementKey.noteName}${displayedMeasurementKey.octave}`,
+    engine: "composite2-1",
+  }, {
+    prev: seq.prev,
+    next: seq.next,
+    setSection: seq.setSection,
+    goToKey: seq.goToKey,
+    getAccessToken: async () => (await supabase.auth.getSession()).data.session?.access_token ?? null,
+    sectionOrders: COMPOSITE2_SECTION_ORDERS,
+  });
   const inTune    = displayedLiveCents !== null ? Math.abs(displayedLiveCents) <= 2 : false;
   const warnRange = displayedLiveCents !== null ? Math.abs(displayedLiveCents) <= 8 : false;
 
