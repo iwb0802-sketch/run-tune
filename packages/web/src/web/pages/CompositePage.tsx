@@ -12,6 +12,7 @@ import { Link, useLocation } from "wouter";
 import { toast as sonnerToast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useCompositeTuner, type CompositeResult } from "@/hooks/useCompositeTuner";
+import { useCompositeTunerV2 } from "@/hooks/useCompositeTunerV2";
 import { useAutoCompositeTuner, type AutoCompositeResult } from "@/hooks/useAutoCompositeTuner";
 import { useTuningSession } from "@/hooks/useTuningSession";
 import { useWakeLock } from "@/hooks/useWakeLock";
@@ -181,7 +182,9 @@ export default function CompositePage() {
     );
   }, [ensureSession, recordMeasurement]);
 
-  const fixedTuner = useCompositeTuner(seq.targetKeyIndex, handleConfirmed, 4096);
+  const legacyFixedTuner = useCompositeTuner(seq.targetKeyIndex, isComposite2 ? handleConfirmed : undefined, 4096);
+  const experimentalFixedTuner = useCompositeTunerV2(seq.targetKeyIndex, !isComposite2 ? handleConfirmed : undefined, 4096);
+  const fixedTuner = isComposite2 ? legacyFixedTuner : experimentalFixedTuner;
   const autoTuner = useAutoCompositeTuner(handleAutoConfirmed, 8192);
   const isListening = autoTargetEnabled ? autoTuner.isListening : fixedTuner.isListening;
   const error = autoTargetEnabled ? autoTuner.error : fixedTuner.error;
