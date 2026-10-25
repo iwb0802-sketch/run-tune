@@ -534,6 +534,7 @@ export default function CompositePage() {
           ) : (
             <Link to="/composite2" className={cn("shrink-0 px-3 py-1 text-xs font-medium rounded-md transition-colors", isComposite3 ? "text-slate-300 hover:text-white" : "text-muted-foreground hover:text-foreground")}>복합2</Link>
           )}
+          <Link to="/composite2-1" className={cn("shrink-0 px-3 py-1 text-xs font-medium rounded-md transition-colors", isComposite3 ? "text-slate-300 hover:text-white" : "text-muted-foreground hover:text-foreground")}>복합2-1</Link>
           {isComposite3 ? (
             <span className="shrink-0 px-3 py-1 text-xs font-bold rounded-md bg-[#37d2b0] text-[#08232a] shadow-sm">복합3</span>
           ) : (

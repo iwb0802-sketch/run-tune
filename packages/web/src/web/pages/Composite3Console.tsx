@@ -163,6 +163,7 @@ export default function Composite3Console({
             <Link to="/manual" className="shrink-0 border border-transparent px-3 py-2 text-slate-500 transition-colors hover:border-[#cfd9cf] hover:text-slate-800">수동</Link>
             <Link to="/composite" className="shrink-0 border border-transparent px-3 py-2 text-slate-500 transition-colors hover:border-[#cfd9cf] hover:text-slate-800">복합</Link>
             <Link to="/composite2" className="shrink-0 border border-transparent px-3 py-2 text-slate-500 transition-colors hover:border-[#cfd9cf] hover:text-slate-800">복합2</Link>
+            <Link to="/composite2-1" className="shrink-0 border border-transparent px-3 py-2 text-slate-500 transition-colors hover:border-[#cfd9cf] hover:text-slate-800">복합2-1</Link>
             <span className="shrink-0 border border-[#5f9273]/50 bg-[#5f9273]/10 px-3 py-2 font-bold text-[#5f9273]">복합3</span>
             <Link to="/reference" className="shrink-0 border border-transparent px-3 py-2 text-slate-500 transition-colors hover:border-[#cfd9cf] hover:text-slate-800">기준음</Link>
           </nav>
